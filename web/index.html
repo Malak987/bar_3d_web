@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Design Cake — BAR</title>
+  <link rel="preload" href="js/vendor/three.min.js" as="script" />
+  <link rel="preload" href="flutter_bootstrap.js" as="script" />
+  <meta name="theme-color" content="#EDF5F3" />
+  <meta name="robots" content="noindex,nofollow" />
+
+  <!-- ═══════════════════════════════════════════════════════
+       ★ HTML Splash Screen — يبان فوراً قبل أي حاجة
+       ═══════════════════════════════════════════════════════ -->
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #EDF5F3;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    }
+
+    /* ── Splash container ────────────────────────────────── */
+    #app-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #EDF5F3;
+      transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+    }
+    #app-splash.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* ── Logo (circular with teal border + pulse) ──────── */
+    .splash-logo {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      border: 3px solid #0D9E8A;
+      box-shadow:
+        0 0 0 6px rgba(13, 158, 138, 0.12),
+        0 12px 30px rgba(3, 46, 63, 0.18);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      animation: splashLogoPulse 2.2s ease-in-out infinite;
+    }
+    .splash-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    .splash-logo .fallback {
+      font-size: 56px;
+      line-height: 1;
+    }
+
+    @keyframes splashLogoPulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow:
+          0 0 0 6px rgba(13, 158, 138, 0.12),
+          0 12px 30px rgba(3, 46, 63, 0.18);
+      }
+      50% {
+        transform: scale(1.04);
+        box-shadow:
+          0 0 0 12px rgba(13, 158, 138, 0.18),
+          0 18px 40px rgba(3, 46, 63, 0.22);
+      }
+    }
+
+    /* ── App title ────────────────────────────────────────── */
+    .splash-title {
+      margin-top: 24px;
+      color: #032E3F;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 0.3px;
+    }
+    .splash-subtitle {
+      margin-top: 6px;
+      color: #6B8F8A;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ── Circular loader ──────────────────────────────────── */
+    .splash-loader {
+      margin-top: 28px;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 3px solid rgba(13, 158, 138, 0.18);
+      border-top-color: #0D9E8A;
+      animation: splashSpin 0.9s linear infinite;
+    }
+    @keyframes splashSpin { to { transform: rotate(360deg); } }
+
+    /* ── Loading text (fades in) ──────────────────────────── */
+    .splash-loading-text {
+      margin-top: 18px;
+      color: #0A7A6A;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      opacity: 0;
+      animation: splashFadeText 0.6s ease 0.4s forwards;
+    }
+    @keyframes splashFadeText { to { opacity: 1; } }
+  </style>
+</head>
+<body>
+<noscript>
+  <div style="padding:24px;text-align:center;font-family:Arial,sans-serif;color:#032E3F;background:#EDF5F3;min-height:100vh;box-sizing:border-box">
+    <h2>Design Cake</h2>
+    <p>يحتاج مصمم التورتة إلى تفعيل JavaScript للعمل.</p>
+  </div>
+</noscript>
+
+<!-- ★ Splash visible from the very first paint -->
+<div id="app-splash">
+  <div class="splash-logo">
+    <img src="assets/assets/images/logo.png"
+         alt="Design Cake"
+         onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'fallback\'>🎂</div>'" />
+  </div>
+  <div class="splash-title">Design Cake</div>
+  <div class="splash-subtitle">صمّم تورتتك بنفسك ✨</div>
+  <div class="splash-loader"></div>
+  <div class="splash-loading-text">جاري التحميل ...</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Three.js + CakeDesigner JS bridge
+     ═══════════════════════════════════════════════════════ -->
+<!-- Local vendored Three.js: avoids CDN/network dependency in WebView/iframe and improves startup reliability. -->
+<script src="js/vendor/three.min.js"></script>
+<script>
+  // Fallback only for misconfigured deployments where /js/vendor/three.min.js
+  // was not copied. In normal production the local file is used.
+  if (typeof window.THREE === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"><\\/script>');
+  }
+</script>
+
+<!-- utils -->
+<script src="js/utils/math_utils.js"></script>
+<script src="js/utils/color_utils.js"></script>
+<script src="js/utils/disposal.js"></script>
+<script src="js/utils/performance.js"></script>
+<script src="js/utils/config_normalizer.js"></script>
+<script src="js/utils/diff.js"></script>
+
+<!-- core -->
+<script src="js/core/orbit_controls.js"></script>
+<script src="js/core/merge_geometries.js"></script>
+<script src="js/core/geometry_pool.js"></script>
+<script src="js/core/material_pool.js"></script>
+<script src="js/core/marble_texture.js"></script>
+<script src="js/core/scene.js"></script>
+
+<!-- builders -->
+<script src="js/builders/plate_builder.js"></script>
+<script src="js/builders/body_builder.js"></script>
+<script src="js/builders/top_canvas_builder.js"></script>
+<script src="js/builders/piping_geometries.js"></script>
+<script src="js/builders/piping_builder.js"></script>
+
+<!-- addons -->
+<script src="js/addons/addon_helpers.js"></script>
+<script src="js/addons/center_addons.js"></script>
+<script src="js/addons/edge_addons.js"></script>
+<script src="js/addons/surface_addons.js"></script>
+<script src="js/addons/addons_builder.js"></script>
+
+<!-- instance + public API -->
+<script src="js/core/cake_designer_instance.js"></script>
+<script src="js/cake_designer.js"></script>
+
+<!-- ═══════════════════════════════════════════════════════
+     ★ Splash control
+     ─────────────────────────────────────────────────────
+     يخفي الـ splash لما:
+       1. window.cakeDesigner جاهز (JS bridge)
+       2. Flutter رسم أول إطار (DOM في <flt-glass-pane>)
+       3. حد أدنى 1500ms (يمنع وميض سريع)
+       4. حد أقصى 8000ms (fail-safe)
+     ═══════════════════════════════════════════════════════ -->
+<script>
+  (function () {
+    var MIN_MS = 1500;
+    var MAX_MS = 8000;
+    var startTime = Date.now();
+    var hidden = false;
+
+    function hideSplash() {
+      if (hidden) return;
+      var elapsed = Date.now() - startTime;
+      var wait = Math.max(0, MIN_MS - elapsed);
+      setTimeout(function () {
+        if (hidden) return;
+        hidden = true;
+        var el = document.getElementById('app-splash');
+        if (el) {
+          el.classList.add('hidden');
+          // remove from DOM after fade-out
+          setTimeout(function () {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            // restore body scroll/overflow
+            document.body.style.overflow = '';
+          }, 600);
+        }
+      }, wait);
+    }
+
+    // ─── Detect readiness ─────────────────────────────────
+    // Flutter Web بيضيف <flt-glass-pane> أول ما يرسم أول إطار
+    function isFlutterReady() {
+      return document.querySelector('flt-glass-pane') !== null
+          || document.querySelector('flutter-view') !== null;
+    }
+
+    function isJsReady() {
+      return typeof window.cakeDesigner !== 'undefined';
+    }
+
+    // expose يدوياً لو محتاج
+    window.hideSplash = hideSplash;
+
+    // poll loop
+    var attempts = 0;
+    var pollTimer = setInterval(function () {
+      attempts++;
+      if (isJsReady() && isFlutterReady()) {
+        clearInterval(pollTimer);
+        hideSplash();
+      } else if (attempts > 80) {  // ~8 ثوان polling
+        clearInterval(pollTimer);
+        hideSplash();
+      }
+    }, 100);
+
+    // absolute fail-safe
+    setTimeout(hideSplash, MAX_MS);
+  })();
+</script>
+
+<!-- Flutter Web entrypoint -->
+<script src="flutter_bootstrap.js" async></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a11698b1f8b2b283',t:'MTc4MjQxODAyNQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
