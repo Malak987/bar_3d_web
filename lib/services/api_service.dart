@@ -8,6 +8,7 @@ import '../data/addon_options.dart';
 import '../data/palette_colors.dart';
 import '../models/cake_config.dart';
 import '../models/cake_meta.dart';
+import 'auth_guard.dart';
 import 'web_helpers.dart';
 
 class UploadedDesignImages {
@@ -75,20 +76,20 @@ class CustomizationCartAddResult {
 class ApiService {
   static const String baseUrl = 'https://bar-backend.runasp.net';
 
-  // ★ productId is FIXED — no need to wait for Flutter to inject it
   static const String _fixedProductId = 'ab22d521-b87c-4249-92d6-8dccc03c4660';
 
-  static String? _accessToken;
-  static bool _authExchangeSucceeded = false;
-  static Future<bool>? _authExchangeFuture;
+  // ── Token access via AuthGuard ─────────────────────────
+  static String? get token => AuthGuard.session?.jwt ?? WebHelpers.readToken();
 
-  // In the new architecture Flutter does NOT inject JWT/localStorage.
-  // Auth is established by ExchangeTransferToken (cookie session and/or token
-  // returned by backend). DebugConfig/localStorage remains only as a dev fallback.
-  static String? get token => _accessToken ?? WebHelpers.readToken();
-  static bool get isAuthenticated => _authExchangeSucceeded || (token?.isNotEmpty ?? false);
+  // ── Authentication status via AuthGuard ────────────────
+  //
+  // ✅ Now uses AuthGuard's centralized auth state:
+  //   - Checks existing valid session first
+  //   - Rejects used/expired transfer tokens (replay protection)
+  //   - Validates JWT expiry on every check
+  //   - Session state survives page reloads
+  static bool get isAuthenticated => AuthGuard.isAuthenticated;
 
-  // ★ productId: always available immediately
   static String get productId => _fixedProductId;
 
   static String _t(dynamic v) => (v ?? '').toString().trim();
@@ -111,101 +112,28 @@ class ApiService {
       _shapes.isNotEmpty ? _shapes.first['id'] as String? : null;
 
   // ═══════════════════════════════════════════════
-  // AUTH TRANSFER — WebView startup
+  // AUTH TRANSFER — uses AuthGuard for centralized auth
   // ═══════════════════════════════════════════════
-  static Future<bool> exchangeTransferTokenFromUrl() {
-    if (_authExchangeSucceeded) return Future.value(true);
 
-    // If startup exchange is already running, the Add To Cart button must wait
-    // for the same Future instead of returning false and showing
-    // "جاري تحميل بيانات الحساب" while exchange is still in progress.
-    final running = _authExchangeFuture;
-    if (running != null) return running;
-
-    _authExchangeFuture = _exchangeTransferTokenFromUrlInternal();
-    return _authExchangeFuture!;
+  /// Exchange transfer token using the centralized AuthGuard.
+  ///
+  /// Delegated to AuthGuard which:
+  ///   1. Checks for existing valid session (bypass)
+  ///   2. Validates replay protection (tokens marked used)
+  ///   3. Exchanges token with backend
+  ///   4. Marks token used (prevents replay)
+  ///   5. Stores session with expiry
+  ///   6. Cleans up URL
+  ///
+  /// Returns AuthResult with status and session info.
+  static Future<AuthResult> ensureAuthenticated() {
+    return AuthGuard.ensureAuthenticated();
   }
 
-  static Future<bool> _exchangeTransferTokenFromUrlInternal() async {
-    final transferToken = WebHelpers.readFirstQueryParam(const [
-      'transferToken',
-      'token',
-      'authTransferToken',
-      'auth_transfer_token',
-      'transfer_token',
-      't',
-    ]) ??
-        WebHelpers.readStoredTransferToken();
-
-    if (transferToken == null || transferToken.isEmpty) {
-      // Backward-compatible fallback: some old WebView builds inject a JWT
-      // directly into localStorage instead of using AuthTransfer.
-      if (token?.isNotEmpty == true) {
-        _authExchangeSucceeded = true;
-        print('[AUTH_TRANSFER] No transfer token, using existing injected JWT');
-        return true;
-      }
-      print('[AUTH_TRANSFER] No transfer token in URL. Expected one of: transferToken, token, authTransferToken, transfer_token');
-      _authExchangeFuture = null;
-      return false;
-    }
-
-    try {
-      final res = await _sendJson(
-        method: 'POST',
-        path: '/api/AuthTransfer/ExchangeTransferToken',
-        body: {'transferToken': transferToken},
-        // IMPORTANT: backend currently returns Access-Control-Allow-Origin: *.
-        // Credentialed CORS requests are blocked with wildcard origins, so the
-        // transfer exchange must be sent without browser credentials. If the
-        // backend later switches to cookie sessions, configure CORS with a
-        // specific origin + AllowCredentials and set this to true.
-        withCredentials: false,
-      );
-
-      if (res.status < 200 || res.status >= 300) {
-        print('[AUTH_TRANSFER] ❌ ${res.status}: ${res.body}');
-        _authExchangeFuture = null;
-        return false;
-      }
-
-      final decoded = _tryDecode(res.body);
-      if (decoded is Map<String, dynamic> && decoded['isSucceeded'] == false) {
-        print('[AUTH_TRANSFER] ❌ ${decoded['message'] ?? res.body}');
-        _authExchangeFuture = null;
-        return false;
-      }
-
-      final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
-      if (decoded is Map<String, dynamic>) {
-        _accessToken = _firstString([
-          decoded['accessToken'],
-          decoded['token'],
-          decoded['jwt'],
-          decoded['authToken'],
-          data is Map<String, dynamic> ? data['accessToken'] : null,
-          data is Map<String, dynamic> ? data['token'] : null,
-          data is Map<String, dynamic> ? data['jwt'] : null,
-          data is Map<String, dynamic> ? data['authToken'] : null,
-        ]);
-      }
-
-      _authExchangeSucceeded = true;
-      WebHelpers.removeQueryParams(const [
-        'transferToken',
-        'token',
-        'authTransferToken',
-        'auth_transfer_token',
-        'transfer_token',
-        't',
-      ]);
-      print('[AUTH_TRANSFER] ✅ ExchangeTransferToken completed');
-      return true;
-    } catch (e) {
-      print('[AUTH_TRANSFER] ❌ $e');
-      _authExchangeFuture = null;
-      return false;
-    }
+  /// Validate session after page reload.
+  /// Checks stored session expiry and JWT validity.
+  static Future<AuthResult> validateSession() {
+    return AuthGuard.validateOnReload();
   }
 
   // ═══════════════════════════════════════════════
@@ -356,8 +284,6 @@ class ApiService {
       final form = html.FormData();
       final designBlob = _dataUrlToBlob(finalDesignDataUrl);
 
-      // Customer photo is optional. Do not send an empty/nullable data URL,
-      // because _dataUrlToBlob expects a real base64 data URL.
       if (userPhotoDataUrl != null && userPhotoDataUrl.trim().isNotEmpty) {
         final photoBlob = _dataUrlToBlob(userPhotoDataUrl);
         form.appendBlob('photoUrl', photoBlob, 'user-photo-${DateTime.now().millisecondsSinceEpoch}.png');
@@ -368,8 +294,6 @@ class ApiService {
       final req = html.HttpRequest();
       req.open('POST', '$baseUrl/api/CustomizationOrder/UploadImages');
       final t = token;
-      // Use Bearer auth without browser credentials when a token is available,
-      // avoiding wildcard+credentials CORS failures.
       req.withCredentials = t == null || t.isEmpty;
       if (t != null && t.isNotEmpty) req.setRequestHeader('Authorization', 'Bearer $t');
 
@@ -398,7 +322,6 @@ class ApiService {
   // ═══════════════════════════════════════════════
   static Future<CustomizationCartAddResult> addCustomizationToCart(Map<String, dynamic> payload) async {
     try {
-      // ✅ Comprehensive logging before sending — helps diagnose 500 errors
       print('[API] ═══════════════════════════════════════════');
       print('[API] CustomizationCart/AddToCart — Request Payload:');
       payload.forEach((key, value) {
@@ -426,8 +349,6 @@ class ApiService {
         path: '/api/CustomizationCart/AddToCart',
         body: payload,
         authenticated: true,
-        // Prefer Bearer-token auth for web CORS. Cookie credentials require
-        // backend CORS AllowCredentials + explicit origin.
         withCredentials: token == null || token!.isEmpty,
       );
 
@@ -571,9 +492,6 @@ class ApiService {
       addonColors: const {},
     );
   }
-
-  // Legacy product-cart API intentionally removed from the designer flow.
-  // WebView must save only customization designs using CustomizationCart.
 
   static List _idsToUuids(dynamic ids, Map<String, String> map) {
     if (ids == null) return [];

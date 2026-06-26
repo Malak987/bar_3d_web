@@ -1,34 +1,27 @@
-import 'package:flutter/material.dart';
-import '../core/app_colors.dart';
+// ─────────────────────────────────────────────────────────────────────────
+// 🔐 Auth Gate — Barrel Export
+// ─────────────────────────────────────────────────────────────────────────
+//
+// This file re-exports all auth gate components for convenient imports.
+//
+// Primary export:
+//   - DesignerAuthGate  — The outermost gate for the entire application
+//     ├── Access classification (WebView vs standalone browser)
+//     ├── Authentication (session check → token exchange)
+//     ├── Loading options (ONLY after auth succeeds)
+//     └── Mount designer (3D scene created only after auth)
+//
+// Secondary exports:
+//   - AuthGate — Individual auth error screens (legacy)
+//   - StandaloneUnauthorizedPage — Direct browser unauthorized screen
+//   - UnauthorizedPage — WebView/iframe unauthorized screen
+//
+// Usage:
+//   import 'package:bar_3d_web/widgets/auth_gate.dart';
+//   import 'package:bar_3d_web/widgets/auth_gate/designer_auth_gate.dart'; // for type access
+//
+// ─────────────────────────────────────────────────────────────────────────
 
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 80, color: AppColors.primary),
-              const SizedBox(height: 24),
-              const Text('مصمم الكيك متاح داخل التطبيق فقط',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text('حمّل تطبيق BAR من المتجر لتصميم كيكتك ثلاثية الأبعاد',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+export 'auth_gate/designer_auth_gate.dart';
+export 'auth_gate/standalone_unauthorized_page.dart';
+export 'auth_gate/unauthorized_page.dart';

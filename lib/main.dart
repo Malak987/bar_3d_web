@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'core/app_colors.dart';
-import 'widgets/splash/flutter_splash_gate.dart';
+import 'widgets/auth_gate/designer_auth_gate.dart';
 
 void main() {
   runApp(const CakeDesignerApp());
@@ -19,7 +19,7 @@ class CakeDesignerApp extends StatelessWidget {
       builder: (context, child) => _buildResponsiveShell(context, child),
       home: const Directionality(
         textDirection: TextDirection.ltr,
-        child: FlutterSplashGate(),
+        child: DesignerAuthGate(),
       ),
     );
   }

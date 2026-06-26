@@ -1,5 +1,6 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
 import 'dart:convert';
-import 'dart:js/js_wasm.dart';
+import 'dart:html' as html;
 import 'package:http/http.dart' as http;
 
 /// 🔐 Secure Auth Transfer Token Exchange Service
@@ -43,10 +44,7 @@ class AuthTransferService {
   /// Get location.search from JS
   static String? _getLocationSearch() {
     try {
-      if (const bool.fromEnvironment('dart.library.jsinterop', defaultValue: false)) {
-        return _getSearchFromWeb();
-      }
-      return null;
+      return html.window.location.search;
     } catch (e) {
       return null;
     }
@@ -139,10 +137,13 @@ class AuthTransferService {
 
   static void _storeToken(String token) {
     try {
-      // Web: localStorage
-      if (const bool.fromEnvironment('dart.library.js_interop', defaultValue: false)) {
-        // Use JS interop to set localStorage
-        _setLocalStorage('token', token);
+      html.window.localStorage['token'] = token;
+      // Also update bar_user_context for other services
+      final raw = html.window.localStorage['bar_user_context'];
+      if (raw != null && raw.isNotEmpty) {
+        final ctx = jsonDecode(raw) as Map<String, dynamic>;
+        ctx['token'] = token;
+        html.window.localStorage['bar_user_context'] = jsonEncode(ctx);
       }
     } catch (e) {
       print('[AUTH_TRANSFER] Failed to store token: $e');
@@ -151,9 +152,7 @@ class AuthTransferService {
 
   static String? _readToken() {
     try {
-      if (const bool.fromEnvironment('dart.library.js_interop', defaultValue: false)) {
-        return _getLocalStorage('token');
-      }
+      return html.window.localStorage['token'];
     } catch (e) {
       print('[AUTH_TRANSFER] Failed to read token: $e');
     }
@@ -162,9 +161,7 @@ class AuthTransferService {
 
   static void _clearToken() {
     try {
-      if (const bool.fromEnvironment('dart.library.js_interop', defaultValue: false)) {
-        _removeLocalStorage('token');
-      }
+      html.window.localStorage.remove('token');
     } catch (e) {
       print('[AUTH_TRANSFER] Failed to clear token: $e');
     }
@@ -191,22 +188,4 @@ class AuthTransferService {
   }
 }
 
-// ── JS Interop helpers (declared here for web compilation) ──
-
-@JS('localStorage.getItem')
-external String? _getLocalStorage(String key);
-
-@JS('localStorage.setItem')
-external void _setLocalStorage(String key, String value);
-
-@JS('localStorage.removeItem')
-external void _removeLocalStorage(String key);
-
-/// Helper function to get search params from web API
-String? _getSearchFromWeb() {
-  try {
-    return Uri.base.queryParameters['token'];
-  } catch (e) {
-    return null;
-  }
-}
+// ── Auth transfer service complete ───────────────────────
