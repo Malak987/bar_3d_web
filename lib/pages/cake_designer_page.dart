@@ -472,21 +472,36 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
     final result = await _addToCart();
     if (!mounted || result == null) return;
 
-    // No Flutter bridge — show local feedback and fallback cart page.
-    // This only applies in standalone browser mode (testing/debugging).
-    if (!WebHelpers.hasFlutterBridge) {
+    // لو داخل Flutter mobile WebView:
+    // Flutter هيستقبل CAKE_DESIGN_COMPLETED ويعمل navigation.
+    if (WebHelpers.hasFlutterBridge) {
+      return;
+    }
+
+    // لو داخل iframe في Flutter Web:
+    // ممنوع نفتح fallback cart جوه iframe.
+    // إحنا بعتنا postMessage للـ parent، والـ parent هو اللي هيفتح customize cart.
+    if (WebHelpers.isEmbeddedInIframe) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تمت إضافة التصميم للسلة بنجاح ✓'),
+          content: Text('تم إرسال التصميم للتطبيق، جاري فتح السلة...'),
           backgroundColor: AppColors.teal,
         ),
       );
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const _FallbackCartPage()),
-      );
+      return;
     }
-    // With Flutter bridge: Flutter handles AddToCart and navigation.
-    // The designer stays open until Flutter closes the WebView.
+
+    // Standalone browser فقط، يعني المستخدم فاتح bar_3d_web لوحده.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تمت إضافة التصميم للسلة بنجاح ✓'),
+        backgroundColor: AppColors.teal,
+      ),
+    );
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const _FallbackCartPage()),
+    );
   }
 
   // ── Build UI ───────────────────────────────────────────────────────────

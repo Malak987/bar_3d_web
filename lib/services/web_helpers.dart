@@ -23,12 +23,20 @@ class WebHelpers {
     }
   }
 
+  static bool get isEmbeddedInIframe {
+    try {
+      return html.window.parent != null && html.window.parent != html.window;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static void notifyFlutterBridge(String type, Map<String, dynamic> payload) {
     try {
       if (hasFlutterBridge) {
         final win = html.window as dynamic;
         print('[WebHelpers] FlutterBridge → type: $type, payload keys: ${payload.keys.toList()}');
-        win.flutter_inappwebview.callHandler('FlutterBridge', {
+        win.flutter_inappwebview.callHandler(channelFlutterBridge, {
           'type': type,
           'payload': payload,
         });
@@ -72,8 +80,16 @@ class WebHelpers {
       if (hasFlutterBridge) {
         print('[WebHelpers] ✅ Calling flutter_inappwebview.callHandler...');
         final win = html.window as dynamic;
-        final result = win.flutter_inappwebview.callHandler(channelCakeDesignCompleted, payload);
-        print('[WebHelpers] ✅ callHandler returned: $result');
+        // Send through BOTH channels:
+        // 1) CAKE_DESIGN_COMPLETED: canonical direct handler used by bar_web.
+        // 2) FlutterBridge envelope: backwards-compatible handler for older app builds.
+        final directResult = win.flutter_inappwebview.callHandler(channelCakeDesignCompleted, payload);
+        final envelopeResult = win.flutter_inappwebview.callHandler(channelFlutterBridge, {
+          'type': channelCakeDesignCompleted,
+          'payload': payload,
+        });
+        print('[WebHelpers] ✅ direct callHandler returned: $directResult');
+        print('[WebHelpers] ✅ envelope callHandler returned: $envelopeResult');
       } else {
         print('[WebHelpers] ❌ hasFlutterBridge is FALSE — Flutter will NOT receive CAKE_DESIGN_COMPLETED');
         print('[WebHelpers] ❌ This is the root cause! flutter_inappwebview not accessible');
@@ -91,10 +107,10 @@ class WebHelpers {
         'type': channelCakeDesignCompleted,
         'payload': payload,
       };
+
+      print('[WebHelpers] 📤 Posting CAKE_DESIGN_COMPLETED to parent iframe');
       _postMessageStrict(message);
-      if (html.window.parent != null && html.window.parent != html.window) {
-        _postMessageToParent(message);
-      }
+      _postMessageToParent(message);
     } catch (e) {
       print('[WebHelpers] ❌ CAKE_DESIGN_COMPLETED bridge error: $e');
     }
@@ -118,7 +134,21 @@ class WebHelpers {
 
   static void _postMessageToParent(Map<String, dynamic> message) {
     try {
-      html.window.parent!.postMessage(message, '*');
+      final encoded = jsonEncode(message);
+
+      // Send to direct parent iframe
+      if (html.window.parent != null && html.window.parent != html.window) {
+        html.window.parent!.postMessage(message, '*');
+        html.window.parent!.postMessage(encoded, '*');
+        print('[WebHelpers] ✅ postMessage sent to parent: ${message['type']}');
+      }
+
+      // Send to top window too, for nested iframe cases
+      if (html.window.top != null && html.window.top != html.window) {
+        html.window.top!.postMessage(message, '*');
+        html.window.top!.postMessage(encoded, '*');
+        print('[WebHelpers] ✅ postMessage sent to top: ${message['type']}');
+      }
     } catch (e) {
       print('[BAR] Parent postMessage error: $e');
     }
