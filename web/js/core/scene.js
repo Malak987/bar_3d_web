@@ -206,9 +206,12 @@
       if (w === this._lastW && h === this._lastH) return false;
       this._lastW = w;
       this._lastH = h;
-      const nextProfile = root.CD.Perf.profile();
-      this.profile = nextProfile;
-      this.renderer.setPixelRatio(this._effectiveDpr());
+      // NOTE: intentionally NOT recomputing profile / setPixelRatio here.
+      // Device tier and DPR don't change mid-session, but resize fires very
+      // often on mobile Chrome (URL bar show/hide while scrolling, keyboard
+      // open/close). setPixelRatio() reallocates the framebuffer and is
+      // expensive — calling it on every resize tick was the main cause of
+      // the jank/heaviness. Aspect + size only:
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h, false);

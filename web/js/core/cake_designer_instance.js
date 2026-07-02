@@ -22,6 +22,15 @@
       this._metadata = {};
 
       this.invalidate = this.invalidate.bind(this);
+      // Bind these here (before Scene/_apply run) because both can
+      // synchronously trigger invalidate() -> requestAnimationFrame(this._animate)
+      // during setup. If _animate isn't bound yet at that point, it gets
+      // scheduled unbound and later throws "Cannot set properties of
+      // undefined (setting '_animId')" in strict mode.
+      this._animate = this._animate.bind(this);
+      this._scheduleResize = this._scheduleResize.bind(this);
+      this._onVisibility = this._onVisibility.bind(this);
+
       this.scene = new C.Scene(container, {
         invalidate: this.invalidate,
         error: (code, error) => this._handleError(code, error),
@@ -42,9 +51,6 @@
       this.autoRotate = !!config.autoRotate;
       this._apply(C.Config.normalize(config), null);
 
-      this._animate = this._animate.bind(this);
-      this._scheduleResize = this._scheduleResize.bind(this);
-      this._onVisibility = this._onVisibility.bind(this);
       window.addEventListener('resize', this._scheduleResize, { passive: true });
       document.addEventListener('visibilitychange', this._onVisibility);
       if (typeof ResizeObserver !== 'undefined') {

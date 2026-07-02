@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 
-import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 
 import 'session_validator.dart';
@@ -130,10 +129,11 @@ class AuthGuard {
     try {
       print('[AuthGuard] Exchanging transfer token...');
 
-      // Use BrowserClient with credentials to send session cookies.
-      // The transfer token may be bound to the user's session.
-      final client = BrowserClient()..withCredentials = true;
-      final response = await client.post(
+      // JWT-based auth — no cookies/session needed, so we do NOT set
+      // withCredentials. A credentialed ('include') request cannot be
+      // combined with a backend that returns Access-Control-Allow-Origin: *,
+      // which is exactly what was blocking this exchange in Chrome/web.
+      final response = await http.post(
         Uri.parse('$_baseUrl$_exchangePath'),
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
@@ -149,42 +149,48 @@ class AuthGuard {
         final body = json.decode(response.body);
         String? jwtToken;
 
+        // ── Try to extract a JWT first ──────────────────────────────
+        // This endpoint returns a FLAT body ({"accessToken": "...",
+        // "userId": "..."}) with no isSucceeded/data envelope, unlike
+        // the rest of the API. So we look for a token unconditionally
+        // rather than gating on _isSuccessResponse() first — a 200
+        // response containing a usable token IS success, regardless of
+        // whether an envelope flag is present.
+        final data = body['data'] is Map<String, dynamic> ? body['data'] as Map<String, dynamic> : body;
+        jwtToken = _firstString([
+          data['accessToken'],
+          data['token'],
+          data['jwt'],
+          data['authToken'],
+        ]);
+
+        if (jwtToken != null && jwtToken.isNotEmpty) {
+          // ── Mark token as used BEFORE storing session (replay protection) ──
+          SessionValidator.markTokenUsed(token);
+          print('[AuthGuard] ✅ Token marked as used (replay protection active)');
+
+          // ── Store session ──
+          _currentSession = AuthSession.fromTransferExchange(
+            jwt: jwtToken,
+            userId: _extractUserId(jwtToken),
+          );
+          SessionValidator.storeSession(_currentSession!);
+          _storeJwt(jwtToken);
+
+          // ── Remove token from URL ──
+          _cleanupUrl();
+
+          currentStatus = AuthStatus.authorized;
+          print('[AuthGuard] ✅ Auth exchange complete — session stored');
+
+          return AuthResult(
+            status: AuthStatus.authorized,
+            session: _currentSession,
+            message: 'Authentication successful',
+          );
+        }
+
         if (_isSuccessResponse(body)) {
-          // ── Extract JWT ──
-          final data = body['data'] is Map<String, dynamic> ? body['data'] as Map<String, dynamic> : body;
-          jwtToken = _firstString([
-            data['accessToken'],
-            data['token'],
-            data['jwt'],
-            data['authToken'],
-          ]);
-
-          if (jwtToken != null && jwtToken.isNotEmpty) {
-            // ── Mark token as used BEFORE storing session (replay protection) ──
-            SessionValidator.markTokenUsed(token);
-            print('[AuthGuard] ✅ Token marked as used (replay protection active)');
-
-            // ── Store session ──
-            _currentSession = AuthSession.fromTransferExchange(
-              jwt: jwtToken,
-              userId: _extractUserId(jwtToken),
-            );
-            SessionValidator.storeSession(_currentSession!);
-            _storeJwt(jwtToken);
-
-            // ── Remove token from URL ──
-            _cleanupUrl();
-
-            currentStatus = AuthStatus.authorized;
-            print('[AuthGuard] ✅ Auth exchange complete — session stored');
-
-            return AuthResult(
-              status: AuthStatus.authorized,
-              session: _currentSession,
-              message: 'Authentication successful',
-            );
-          }
-
           // Exchange succeeded but no JWT — backend may use cookie-based auth
           print('[AuthGuard] Exchange succeeded but no JWT — using cookie auth');
 
