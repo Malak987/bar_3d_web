@@ -80,7 +80,12 @@ class AuthTransferService {
 
       if (response.statusCode == 200) {
         final body = json.decode(response.body);
-        if (body['isSucceeded'] == true) {
+        final bool isSuccess = body['isSucceeded'] == true ||
+            body['isSuccess'] == true ||
+            body['success'] == true ||
+            (body['message']?.toString().toLowerCase() == 'success');
+
+        if (isSuccess) {
           // Extract JWT from response
           final data = body['data'] as Map<String, dynamic>? ?? body;
           final jwtToken = data['accessToken'] as String?

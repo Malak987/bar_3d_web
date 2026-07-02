@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 
+import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 
 import 'session_validator.dart';
@@ -122,26 +123,33 @@ class AuthGuard {
       );
     }
 
-    // ── Exchange with backend ──
+    // ── Small delay before exchange to allow backend propagation ──
+    print('[AuthGuard] Waiting 400ms for backend token propagation...');
+    await Future.delayed(const Duration(milliseconds: 400));
+
     try {
       print('[AuthGuard] Exchanging transfer token...');
 
-      final response = await http.post(
+      // Use BrowserClient with credentials to send session cookies.
+      // The transfer token may be bound to the user's session.
+      final client = BrowserClient()..withCredentials = true;
+      final response = await client.post(
         Uri.parse('$_baseUrl$_exchangePath'),
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           'Accept': 'application/json',
         },
         body: json.encode({'transferToken': token}),
       );
 
       print('[AuthGuard] Exchange response status: ${response.statusCode}');
+      print('[AuthGuard] Exchange response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final body = json.decode(response.body);
         String? jwtToken;
 
-        if (body['isSucceeded'] == true) {
+        if (_isSuccessResponse(body)) {
           // ── Extract JWT ──
           final data = body['data'] is Map<String, dynamic> ? body['data'] as Map<String, dynamic> : body;
           jwtToken = _firstString([
@@ -200,8 +208,12 @@ class AuthGuard {
         }
 
         // Exchange failed
-        final errorMsg = body['message']?.toString() ?? 'Authentication failed';
+        final errorMsg = body['message']?.toString() ??
+            body['title']?.toString() ??
+            body['detail']?.toString() ??
+            'Authentication failed';
         print('[AuthGuard] ❌ Exchange failed: $errorMsg');
+        print('[AuthGuard] ❌ Full response: ${response.body}');
 
         return AuthResult(
           status: AuthStatus.unauthorized,
@@ -223,6 +235,14 @@ class AuthGuard {
         message: 'Network error during authentication: $e',
       );
     }
+  }
+
+  /// Detects success across possible backend response shapes.
+  static bool _isSuccessResponse(Map<String, dynamic> body) {
+    return body['isSucceeded'] == true ||
+        body['isSuccess'] == true ||
+        body['success'] == true ||
+        (body['message']?.toString().toLowerCase() == 'success');
   }
 
   // ── Session Validation on Reload ───────────────────────
