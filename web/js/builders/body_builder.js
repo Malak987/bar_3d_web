@@ -1,13 +1,12 @@
-/** body_builder.js — cake body with baked vertex-color gradient, adaptive segments. */
+/** body_builder.js — cake body with baked vertex-color gradient, 100% matched to bar3dcake. */
 (function (root) {
   'use strict';
 
   const _tmp = new THREE.Color();
 
   function build(group, cfg, R, H, baseY, matPool) {
-    const profile = (root.CD.Perf && root.CD.Perf.profile()) || { low: false };
-    const radSegs = profile.low ? 48 : 64;
-    const hSegs = profile.low ? 20 : 28;
+    const radSegs = 64; // 100% matched to bar3dcake
+    const hSegs = 32;   // 100% matched to bar3dcake
     const geo = new THREE.CylinderGeometry(R, R, H, radSegs, hSegs, false);
     const pos = geo.attributes.position.array;
     const cnt = geo.attributes.position.count;
@@ -41,7 +40,7 @@
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.y = baseY + H * 0.5;
     mesh.castShadow = mesh.receiveShadow = true;
-    mesh.frustumCulled = true;
+    mesh.frustumCulled = false;
     group.add(mesh);
 
     const topColor = resolveTopColor(cfg);
@@ -51,7 +50,7 @@
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.005, radSegs), capMat);
     cap.position.y = baseY + H;
     cap.receiveShadow = true;
-    cap.frustumCulled = true;
+    cap.frustumCulled = false;
     group.add(cap);
 
     return { topColor };

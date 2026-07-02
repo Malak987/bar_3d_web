@@ -156,7 +156,18 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
     }
   }
 
-  void _onCfg(CakeConfig c) => setState(() => _config = c);
+  void _onCfg(CakeConfig c) {
+    var next = c;
+    final hasRibbonOrBow = next.selectedAddons.any((a) =>
+    a.toLowerCase().contains('ribbon') ||
+        a.toLowerCase().contains('bow') ||
+        a == 'giftRibbon' ||
+        a == 'bow');
+    if (hasRibbonOrBow && next.pipingPlacement == 'full') {
+      next = next.copyWith(pipingPlacement: 'edges');
+    }
+    setState(() => _config = next);
+  }
 
   // ── Design Snapshot Capture ─────────────────────────────────────────
 
@@ -433,7 +444,7 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
     if (_adding) return;
 
     if (_step < CakeCustomizationWizard.stepsLength - 1) {
-      if (_step == 3) {
+      if (_step == CakeCustomizationWizard.stepsLength - 2) {
         final preview = await _captureDesignSnapshot();
         if (preview == null || preview.isEmpty) {
           if (mounted) {

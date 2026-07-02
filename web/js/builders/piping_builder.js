@@ -3,16 +3,13 @@
  * piping_builder.js
  *
  * Places piping (top edge / full coverage / both edges) using
- * InstancedMesh for maximum throughput. One material per ring,
- * one geometry per (type, size).
+ * InstancedMesh and merged ring geometries for ultra-low draw calls.
  * ─────────────────────────────────────────────────────────────
  */
 (function (root) {
   'use strict';
 
   const C = root.CD;
-
-  // ── helpers ───────────────────────────────────────────────
 
   function pipingColor(cfg, t) {
     const stops = cfg.pipingColors && cfg.pipingColors.length
@@ -29,12 +26,10 @@
     return cfg.selectedAddons && cfg.selectedAddons.some((a) => BLOCK.indexOf(a) !== -1);
   }
 
-  // ── core placement ────────────────────────────────────────
-
   function build(group, cfg, R, H, baseY, pools) {
-    if (cfg.pipingType === 'none') return;
+    if (!cfg || cfg.pipingType === 'none' || !cfg.pipingType) return;
 
-    const S    = 0.072 * cfg.pipingSize;
+    const S    = 0.072 * (cfg.pipingSize || 1);
     const topY = baseY + H + S * 0.4;
 
     const hasTop = (cfg.text && cfg.text.trim().length > 0) || !!cfg.topImage;
@@ -45,7 +40,6 @@
     const isEdges = cfg.pipingPlacement === 'edges';
     const isFull  = cfg.pipingPlacement === 'full';
 
-    // route to specialised "ring-on-ring" builders for some types
     if (cfg.pipingType === 'threads') {
       return RingTypes.threads (group, cfg, R, H, baseY, S, topY, fillTop, isEdges, pools);
     }
@@ -56,7 +50,6 @@
       return RingTypes.thinLine(group, cfg, R, H, baseY, S, topY, fillTop, isEdges, pools);
     }
 
-    // shell / heart use dedicated instanced rings
     if (cfg.pipingType === 'shell' || cfg.pipingType === 'heart') {
       const ringFn = cfg.pipingType === 'shell' ? _shellRing : _heartRing;
       const topRings = [];
@@ -81,7 +74,7 @@
       return;
     }
 
-    // ── generic types (openStar, closedStar, rose, dropFlower, …)
+    // Generic types (openStar, closedStar, rose, dropFlower, …)
     if (fillTop) {
       let cur = R - S * 2.5;
       while (cur > 0.1) {
@@ -103,8 +96,6 @@
       _genericRing(group, cfg, R + S * 0.15, baseY + S * 0.7, S, true, 0, pools);
     }
   }
-
-  // ── generic InstancedMesh ring ────────────────────────────
 
   function _spacing(type, S) {
     switch (type) {
@@ -158,6 +149,7 @@
       inst.setMatrixAt(i, dummy.matrix);
     }
     inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
     group.add(inst);
   }
 
@@ -168,8 +160,6 @@
     const m       = new THREE.Matrix4().makeBasis(tan, up, cross);
     dummy.setRotationFromMatrix(m);
   }
-
-  // ── shell ring (specialised orientation) ─────────────────
 
   function _shellRing(group, cfg, r, y, S, colorT, isSide, pools) {
     const circ  = 2 * Math.PI * r;
@@ -201,10 +191,9 @@
       inst.setMatrixAt(i, dummy.matrix);
     }
     inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
     group.add(inst);
   }
-
-  // ── heart ring ────────────────────────────────────────────
 
   function _heartRing(group, cfg, r, y, S, colorT, isSide, pools) {
     const circ = 2 * Math.PI * r;
@@ -238,106 +227,89 @@
       inst.setMatrixAt(i, dummy.matrix);
     }
     inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
     group.add(inst);
   }
 
-  // ════════════════════════════════════════════════════════════
-  // Specialised "ring-of-tubes" types
-  // ════════════════════════════════════════════════════════════
-  const RingTypes = {
+  function _flushBatches(group, batches, matPool) {
+    for (const [hex, geos] of batches.entries()) {
+      if (!geos.length) continue;
+      const clean = geos.map(g => g.toNonIndexed());
+      const merged = THREE.mergeGeometries(clean, false) || clean[0];
+      for (const g of clean) if (g !== merged) g.dispose();
+      for (const g of geos) g.dispose();
+      merged.computeBoundingSphere();
+      const mat = matPool.physical(hex, { roughness: 0.28, clearcoat: 0.5, metalness: 0.05 });
+      const m = new THREE.Mesh(merged, mat);
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+    }
+  }
 
+  const RingTypes = {
     threads(group, cfg, R, H, baseY, S, topY, fillTop, isEdges, pools) {
-      const mkTorus = (r, y, t) => {
+      const batches = new Map();
+      const addTorus = (r, y, t) => {
         const hex = pipingColor(cfg, cfg.pipingPlacement === 'full' ? t : 0);
-        const m = new THREE.Mesh(
-          new THREE.TorusGeometry(r, S * 0.055, 12, 180),
-          pools.mat.physical(hex, { roughness: 0.25, clearcoat: 0.6, metalness: 0.05 }),
-        );
-        m.rotation.x = -Math.PI / 2;
-        m.position.y = y + S * 0.08;
-        m.castShadow = m.receiveShadow = true;
-        group.add(m);
+        if (!batches.has(hex)) batches.set(hex, []);
+        const g = new THREE.TorusGeometry(r, S * 0.055, 8, 96);
+        g.rotateX(-Math.PI / 2);
+        g.translate(0, y + S * 0.08, 0);
+        batches.get(hex).push(g);
       };
+
       const radii = fillTop
-        ? (() => { const a = []; let c = R - S * 1.1;
-                   while (c > S * 2.5) { a.push(c); c -= S * 0.55; } return a; })()
+        ? (() => { const a = []; let c = R - S * 1.1; while (c > S * 2.5) { a.push(c); c -= S * 0.55; } return a; })()
         : [R - S * 1.1, R - S * 1.65, R - S * 2.2].filter((v) => v > S * 2.5);
 
-      for (const rr of radii) mkTorus(rr, topY, 0);
-
+      for (const rr of radii) addTorus(rr, topY, 0);
       if (cfg.pipingPlacement === 'full') {
         const rows = Math.max(5, Math.round(H / (S * 0.9)));
-        for (let j = 0; j <= rows; j++) mkTorus(R + S * 0.1, baseY + (j / rows) * H, j / rows);
+        for (let j = 0; j <= rows; j++) addTorus(R + S * 0.1, baseY + (j / rows) * H, j / rows);
       }
-      if (isEdges) mkTorus(R + S * 0.1, baseY + S * 0.7, 0);
+      if (isEdges) addTorus(R + S * 0.1, baseY + S * 0.7, 0);
+      _flushBatches(group, batches, pools.mat);
     },
 
     wave(group, cfg, R, H, baseY, S, topY, fillTop, isEdges, pools) {
-      const matFor = (t) => pools.mat.physical(
-        pipingColor(cfg, cfg.pipingPlacement === 'full' ? t : 0),
-        { roughness: 0.25, clearcoat: 0.6, metalness: 0.05 },
-      );
+      const batches = new Map();
+      const addGeo = (hex, g) => {
+        if (!batches.has(hex)) batches.set(hex, []);
+        batches.get(hex).push(g);
+      };
 
       const mkTopRing = (rr, y, t) => {
+        const hex = pipingColor(cfg, cfg.pipingPlacement === 'full' ? t : 0);
         const wc = Math.max(8, Math.round(rr / (S * 0.12)));
         const curve = (rOff, yOff) => {
           const pts = [];
-          for (let i = 0; i <= 240; i++) {
-            const u = i / 240, a = u * Math.PI * 2;
+          for (let i = 0; i <= 140; i++) {
+            const u = i / 140, a = u * Math.PI * 2;
             const wave = Math.sin(a * wc) * S * 0.16;
-            pts.push(new THREE.Vector3(
-              Math.cos(a) * (rr + rOff + wave),
-              y + yOff,
-              Math.sin(a) * (rr + rOff + wave),
-            ));
+            pts.push(new THREE.Vector3(Math.cos(a) * (rr + rOff + wave), y + yOff, Math.sin(a) * (rr + rOff + wave)));
           }
           return new THREE.CatmullRomCurve3(pts, true);
         };
-        const base = new THREE.Mesh(
-          new THREE.TubeGeometry(curve(0, S * 0.07), 260, S * 0.25, 18, true),
-          matFor(t),
-        );
-        base.castShadow = base.receiveShadow = true;
-        group.add(base);
-        for (let r = -3; r <= 3; r++) {
-          const rm = new THREE.Mesh(
-            new THREE.TubeGeometry(curve(r * S * 0.085, S * (0.29 + Math.abs(r) * 0.006)),
-                                   260, S * 0.035, 8, true),
-            matFor(t),
-          );
-          rm.castShadow = rm.receiveShadow = true;
-          group.add(rm);
+        addGeo(hex, new THREE.TubeGeometry(curve(0, S * 0.07), 150, S * 0.25, 8, true));
+        for (let r = -2; r <= 2; r += 2) {
+          addGeo(hex, new THREE.TubeGeometry(curve(r * S * 0.085, S * (0.29 + Math.abs(r) * 0.006)), 150, S * 0.035, 6, true));
         }
       };
 
       const mkSideRing = (rr, y, t) => {
+        const hex = pipingColor(cfg, cfg.pipingPlacement === 'full' ? t : 0);
         const wc = Math.max(8, Math.round(rr / (S * 0.14)));
         const curve = (vOff, rOff) => {
           const pts = [];
-          for (let i = 0; i <= 240; i++) {
-            const u = i / 240, a = u * Math.PI * 2;
-            pts.push(new THREE.Vector3(
-              Math.cos(a) * (rr + rOff),
-              y + vOff + Math.sin(a * wc) * S * 0.18,
-              Math.sin(a) * (rr + rOff),
-            ));
+          for (let i = 0; i <= 140; i++) {
+            const u = i / 140, a = u * Math.PI * 2;
+            pts.push(new THREE.Vector3(Math.cos(a) * (rr + rOff), y + vOff + Math.sin(a * wc) * S * 0.18, Math.sin(a) * (rr + rOff)));
           }
           return new THREE.CatmullRomCurve3(pts, true);
         };
-        const base = new THREE.Mesh(
-          new THREE.TubeGeometry(curve(0, S * 0.06), 240, S * 0.2, 16, true),
-          matFor(t),
-        );
-        base.castShadow = base.receiveShadow = true;
-        group.add(base);
-        for (let r = -3; r <= 3; r++) {
-          const rm = new THREE.Mesh(
-            new THREE.TubeGeometry(curve(r * S * 0.055, S * (0.26 + Math.abs(r) * 0.012)),
-                                   240, S * 0.032, 8, true),
-            matFor(t),
-          );
-          rm.castShadow = rm.receiveShadow = true;
-          group.add(rm);
+        addGeo(hex, new THREE.TubeGeometry(curve(0, S * 0.06), 140, S * 0.2, 8, true));
+        for (let r = -2; r <= 2; r += 2) {
+          addGeo(hex, new THREE.TubeGeometry(curve(r * S * 0.055, S * (0.26 + Math.abs(r) * 0.012)), 140, S * 0.032, 6, true));
         }
       };
 
@@ -354,30 +326,30 @@
         for (let j = 0; j <= rows; j++) mkSideRing(R + S * 0.15, baseY + (j / rows) * H, j / rows);
       }
       if (isEdges) mkSideRing(R + S * 0.15, baseY + S * 0.7, 0);
+      _flushBatches(group, batches, pools.mat);
     },
 
     thinLine(group, cfg, R, H, baseY, S, topY, fillTop, isEdges, pools) {
-      const mkRing = (r, y, t) => {
+      const batches = new Map();
+      const addRing = (r, y, t) => {
         const hex = pipingColor(cfg, cfg.pipingPlacement === 'full' ? t : 0);
-        const m = new THREE.Mesh(
-          new THREE.TorusGeometry(r, S * 0.15, 16, 128),
-          pools.mat.physical(hex, { roughness: 0.25, clearcoat: 0.6, metalness: 0.05 }),
-        );
-        m.rotation.x = -Math.PI / 2;
-        m.position.y = y;
-        m.castShadow = m.receiveShadow = true;
-        group.add(m);
+        if (!batches.has(hex)) batches.set(hex, []);
+        const g = new THREE.TorusGeometry(r, S * 0.15, 10, 80);
+        g.rotateX(-Math.PI / 2);
+        g.translate(0, y, 0);
+        batches.get(hex).push(g);
       };
       if (fillTop) {
         let cur = R - S * 2.5;
-        while (cur > 0.1) { mkRing(cur, topY, 1); cur -= S * 2.2; }
+        while (cur > 0.1) { addRing(cur, topY, 1); cur -= S * 2.2; }
       }
-      mkRing(R - S * 0.8, topY, 0);
+      addRing(R - S * 0.8, topY, 0);
       if (cfg.pipingPlacement === 'full') {
         const rows = Math.round(H / (S * 2.2));
-        for (let j = 0; j <= rows; j++) mkRing(R + S * 0.1, baseY + (j / rows) * H, j / rows);
+        for (let j = 0; j <= rows; j++) addRing(R + S * 0.1, baseY + (j / rows) * H, j / rows);
       }
-      if (isEdges) mkRing(R + S * 0.1, baseY + S * 0.7, 0);
+      if (isEdges) addRing(R + S * 0.1, baseY + S * 0.7, 0);
+      _flushBatches(group, batches, pools.mat);
     },
   };
 

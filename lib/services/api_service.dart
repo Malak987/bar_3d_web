@@ -179,6 +179,11 @@ class ApiService {
           height: _heightFromSizeValue((s['value'] ?? 10).toDouble()),
           price: (s['extraPrice'] ?? 0).toDouble(),
         )).toList();
+        cakeSizes.sort((a, b) {
+          final numA = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(a.label)?.group(0) ?? '') ?? a.radius * 20;
+          final numB = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(b.label)?.group(0) ?? '') ?? b.radius * 20;
+          return numA.compareTo(numB);
+        });
       }
 
       // ── 3. COLORS (fully API-driven) ──
@@ -186,15 +191,36 @@ class ApiService {
         final apiColors = d['colors'] as List;
         paletteColors = apiColors.map((c) {
           final hex = _hex(c['hexCode']);
+          final name = _t(c['nameAr']).isNotEmpty ? _t(c['nameAr']) : _t(c['nameEn']);
           return PaletteColor(
             id: _t(c['id']),
-            name: _t(c['nameAr']).isNotEmpty ? _t(c['nameAr']) : _t(c['nameEn']),
+            name: name,
             hex: hex,
-            group: _colorGroup(hex),
+            group: _colorGroup(hex, name),
             extraPrice: (c['extraPrice'] ?? 0).toDouble(),
           );
         }).toList();
-        colorGroups = paletteColors.map((c) => c.group).toSet().toList();
+        final logicalOrder = [
+          'أبيض ومحايد 🤍',
+          'وردي وبنفسجي 🌸',
+          'أحمر ودافئ ❤️',
+          'برتقالي وخوخي 🧡',
+          'أصفر وذهبي 💛',
+          'أخضر ودرجاته 💚',
+          'أزرق وسماوي 💙',
+          'بني وشوكولاتة 🍫',
+          'أسود ورمادي 🖤'
+        ];
+        final presentGroups = paletteColors.map((c) => c.group).toSet();
+        colorGroups = logicalOrder.where((g) => presentGroups.contains(g)).toList();
+        for (final g in presentGroups) {
+          if (!colorGroups.contains(g)) colorGroups.add(g);
+        }
+        paletteColors.sort((a, b) {
+          int groupCompare = colorGroups.indexOf(a.group).compareTo(colorGroups.indexOf(b.group));
+          if (groupCompare != 0) return groupCompare;
+          return _luminance(a.hex).compareTo(_luminance(b.hex));
+        });
       }
 
       // ── 4. PIPINGS (id = nameEn for JS) ──
@@ -203,10 +229,30 @@ class ApiService {
         pipingOptions = (d['pipings'] as List).map((p) {
           final jsId = _t(p['nameEn']);
           _pipingJsToUuid[jsId] = _t(p['id']);
+          final rawIcon = _t(p['icon']);
+          String resolvedIcon = rawIcon;
+          if (rawIcon.isEmpty || rawIcon == '✨' || rawIcon == '✦' || rawIcon == '⭐') {
+            final key = '$jsId ${_t(p['nameAr'])}'.toLowerCase();
+            if (key.contains('open') || key.contains('مفتوح')) resolvedIcon = '🌟';
+            else if (key.contains('closed') || key.contains('مغلق')) resolvedIcon = '💫';
+            else if (key.contains('rose') || key.contains('ورد')) resolvedIcon = '🌹';
+            else if (key.contains('flower') || key.contains('زهر')) resolvedIcon = '🌸';
+            else if (key.contains('leaf') || key.contains('ورق') || key.contains('شجر')) resolvedIcon = '🍃';
+            else if (key.contains('shell') || key.contains('صدف')) resolvedIcon = '🐚';
+            else if (key.contains('wave') || key.contains('موج')) resolvedIcon = '🌊';
+            else if (key.contains('basket') || key.contains('سل')) resolvedIcon = '🧺';
+            else if (key.contains('lace') || key.contains('دانتيل') || key.contains('لؤلؤ')) resolvedIcon = '📿';
+            else if (key.contains('thread') || key.contains('خيوط')) resolvedIcon = '🧶';
+            else if (key.contains('grass') || key.contains('عشب')) resolvedIcon = '🌾';
+            else if (key.contains('heart') || key.contains('قلب')) resolvedIcon = '💖';
+            else if (key.contains('round') || key.contains('دائر')) resolvedIcon = '⚪';
+            else if (key.contains('sphere') || key.contains('كرات')) resolvedIcon = '🔮';
+            else resolvedIcon = '🌟';
+          }
           return PipingMeta(
             id: jsId.isNotEmpty ? jsId : _t(p['id']),
             label: _t(p['nameAr']).isNotEmpty ? _t(p['nameAr']) : jsId,
-            icon: _t(p['icon']).isNotEmpty ? _t(p['icon']) : '✦',
+            icon: resolvedIcon,
             description: _t(p['descriptionAr']).isNotEmpty ? _t(p['descriptionAr']) : _t(p['descriptionEn']),
             extraPrice: (p['extraPrice'] ?? 0).toDouble(),
           );
@@ -508,20 +554,67 @@ class ApiService {
     return 0.32 + ((clamped - 10) / 16.0) * 0.22;
   }
 
-  static String _colorGroup(String hex) {
+  static double _luminance(String hex) {
     final h = hex.replaceAll('#', '').toUpperCase();
-    if (h.length < 6) return 'API';
-    final r = int.tryParse(h.substring(0, 2), radix: 16) ?? 0;
-    final g = int.tryParse(h.substring(2, 4), radix: 16) ?? 0;
-    final b = int.tryParse(h.substring(4, 6), radix: 16) ?? 0;
-    if ((r - g).abs() < 18 && (g - b).abs() < 18) return 'Neutral';
-    if (r > 180 && g > 160 && b < 120) return 'Yellow';
-    if (r > 180 && g > 90 && g < 180 && b < 120) return 'Orange';
-    if (r > 170 && b > 140 && g < 170) return 'Pink/Purple';
-    if (b > r && b > g) return 'Blue';
-    if (g > r && g > b) return 'Green';
-    if (r > g && r > b) return 'Red/Brown';
-    return 'API';
+    if (h.length < 6) return 1.0;
+    final r = (int.tryParse(h.substring(0, 2), radix: 16) ?? 255) / 255.0;
+    final g = (int.tryParse(h.substring(2, 4), radix: 16) ?? 255) / 255.0;
+    final b = (int.tryParse(h.substring(4, 6), radix: 16) ?? 255) / 255.0;
+    return r * 0.299 + g * 0.587 + b * 0.114;
+  }
+
+  static String _colorGroup(String hex, [String name = '']) {
+    final n = name.toLowerCase();
+    if (n.contains('أبيض') || n.contains('white') || n.contains('كريم') || n.contains('cream') || n.contains('فانيل') || n.contains('بيج') || n.contains('عاجي')) return 'أبيض ومحايد 🤍';
+    if (n.contains('وردي') || n.contains('بينك') || n.contains('pink') || n.contains('زهر') || n.contains('فوشي')) return 'وردي وبنفسجي 🌸';
+    if (n.contains('أحمر') || n.contains('red') || n.contains('عنابي') || n.contains('نبيذ') || n.contains('توت')) return 'أحمر ودافئ ❤️';
+    if (n.contains('أزرق') || n.contains('blue') || n.contains('سماوي') || n.contains('كحلي') || n.contains('تيركواز') || n.contains('تركواز')) return 'أزرق وسماوي 💙';
+    if (n.contains('أخضر') || n.contains('green') || n.contains('فستقي') || n.contains('نعناع') || n.contains('mint') || n.contains('زيتون')) return 'أخضر ودرجاته 💚';
+    if (n.contains('أصفر') || n.contains('yellow') || n.contains('ذهبي') || n.contains('gold') || n.contains('ليمون')) return 'أصفر وذهبي 💛';
+    if (n.contains('برتقال') || n.contains('orange') || n.contains('خوخ') || n.contains('peach') || n.contains('مشمش')) return 'برتقالي وخوخي 🧡';
+    if (n.contains('بني') || n.contains('brown') || n.contains('شوكولات') || n.contains('قهو') || n.contains('كاكاو') || n.contains('كراميل')) return 'بني وشوكولاتة 🍫';
+    if (n.contains('أسود') || n.contains('black') || n.contains('رمادي') || n.contains('gray') || n.contains('فضي')) return 'أسود ورمادي 🖤';
+
+    final h = hex.replaceAll('#', '').toUpperCase();
+    if (h.length < 6) return 'أبيض ومحايد 🤍';
+    final r = (int.tryParse(h.substring(0, 2), radix: 16) ?? 255) / 255.0;
+    final g = (int.tryParse(h.substring(2, 4), radix: 16) ?? 255) / 255.0;
+    final b = (int.tryParse(h.substring(4, 6), radix: 16) ?? 255) / 255.0;
+
+    final max = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    final min = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    final delta = max - min;
+    final l = (max + min) / 2.0;
+
+    if (delta < 0.08 || l > 0.90) {
+      if (l < 0.20) return 'أسود ورمادي 🖤';
+      return 'أبيض ومحايد 🤍';
+    }
+    if (l < 0.20) return 'أسود ورمادي 🖤';
+
+    double hue = 0;
+    if (max == r) {
+      hue = ((g - b) / delta) % 6;
+    } else if (max == g) {
+      hue = (b - r) / delta + 2;
+    } else {
+      hue = (r - g) / delta + 4;
+    }
+    hue = (hue * 60) % 360;
+    if (hue < 0) hue += 360;
+
+    if (hue >= 335 || hue < 15) {
+      if (l > 0.68) return 'وردي وبنفسجي 🌸';
+      return 'أحمر ودافئ ❤️';
+    }
+    if (hue >= 15 && hue < 45) {
+      if (l < 0.45) return 'بني وشوكولاتة 🍫';
+      return 'برتقالي وخوخي 🧡';
+    }
+    if (hue >= 45 && hue < 68) return 'أصفر وذهبي 💛';
+    if (hue >= 68 && hue < 165) return 'أخضر ودرجاته 💚';
+    if (hue >= 165 && hue < 260) return 'أزرق وسماوي 💙';
+    return 'وردي وبنفسجي 🌸';
   }
 
   static String _cat(dynamic c) {

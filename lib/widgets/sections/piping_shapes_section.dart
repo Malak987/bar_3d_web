@@ -57,8 +57,32 @@ class _PipingCard extends StatelessWidget {
     required this.onTap,
   });
 
+  String _getPipingIcon(PipingMeta item) {
+    final raw = item.icon.trim();
+    if (raw.isNotEmpty && raw != '✨' && raw != '✦' && raw != '⭐') {
+      return raw;
+    }
+    final key = '${item.id} ${item.label} ${item.description}'.toLowerCase();
+    if (key.contains('open') || key.contains('مفتوح')) return '🌟';
+    if (key.contains('closed') || key.contains('مغلق')) return '💫';
+    if (key.contains('rose') || key.contains('ورد')) return '🌹';
+    if (key.contains('flower') || key.contains('زهر')) return '🌸';
+    if (key.contains('leaf') || key.contains('ورق') || key.contains('شجر')) return '🍃';
+    if (key.contains('shell') || key.contains('صدف')) return '🐚';
+    if (key.contains('wave') || key.contains('موج')) return '🌊';
+    if (key.contains('basket') || key.contains('سل')) return '🧺';
+    if (key.contains('lace') || key.contains('دانتيل') || key.contains('لؤلؤ')) return '📿';
+    if (key.contains('thread') || key.contains('خيوط')) return '🧶';
+    if (key.contains('grass') || key.contains('عشب')) return '🌾';
+    if (key.contains('heart') || key.contains('قلب')) return '💖';
+    if (key.contains('round') || key.contains('دائر')) return '⚪';
+    if (key.contains('sphere') || key.contains('كرات')) return '🔮';
+    return '🌟';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final displayIcon = _getPipingIcon(item);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -123,14 +147,14 @@ class _PipingCard extends StatelessWidget {
                         ),
                         child: Center(
                           child: Text(
-                            item.icon,
+                            displayIcon,
                             style: const TextStyle(fontSize: 18),
                           ),
                         ),
                       )
                     else
                       Text(
-                        item.icon,
+                        displayIcon,
                         style: const TextStyle(fontSize: 22),
                       ),
                     const SizedBox(height: 6),

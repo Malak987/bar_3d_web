@@ -3,6 +3,7 @@ import '../../core/app_colors.dart';
 import '../../core/color_utils.dart';
 import '../../data/cake_options.dart';
 import '../../models/cake_config.dart';
+import '../../models/cake_meta.dart';
 import '../common/section.dart';
 import '../common/light_chip.dart';
 
@@ -19,7 +20,14 @@ class SizeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final current = cakeSizes
+    final sortedSizes = List<CakeSizeOption>.from(cakeSizes)
+      ..sort((a, b) {
+        final numA = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(a.label)?.group(0) ?? '') ?? a.radius * 20;
+        final numB = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(b.label)?.group(0) ?? '') ?? b.radius * 20;
+        return numA.compareTo(numB);
+      });
+
+    final current = sortedSizes
         .where((s) => (s.radius - config.cakeRadius).abs() < 0.03)
         .firstOrNull;
 
@@ -27,22 +35,40 @@ class SizeSection extends StatelessWidget {
       number: 1,
       title: 'SIZE',
       arabicTitle: 'المقاس',
-      subtitle: 'اختر الحجم المثالي لمناسبتك',
+      subtitle: 'اختر الحجم المثالي لمناسبتك (مرتبة من الأصغر للأكبر)',
       trailing: current != null ? TextBadge(text: current.serves) : null,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: cakeSizes.map((size) {
+          children: sortedSizes.map((size) {
             final selected = current?.label == size.label;
             return Padding(
               padding: const EdgeInsets.only(left: 8),
               child: _SizeChip(
                 label: size.label,
                 selected: selected,
-                onTap: () => onChanged(config.copyWith(
-                  cakeRadius: size.radius,
-                  cakeHeight: size.height,
-                )),
+                onTap: () {
+                  var next = config.copyWith(
+                    cakeRadius: size.radius,
+                    cakeHeight: size.height,
+                  );
+                  final is10 = size.label.contains('10') || size.id == '10' || size.label.contains('١٠') || size == sortedSizes.firstOrNull;
+                  if (is10) {
+                    final allowed = baseFlavors.where((f) {
+                      final lbl = '${f.id} ${f.label} ${f.arabicLabel}'.toLowerCase();
+                      if (lbl.contains('mix') || lbl.contains('ميكس') || lbl.contains('نصف') || lbl.contains('مشكل') || lbl.contains('half') || lbl.contains('duo') || lbl.contains('خليط')) {
+                        return false;
+                      }
+                      return lbl.contains('choc') || lbl.contains('vanil') || lbl.contains('شيكولات') || lbl.contains('فانيلي');
+                    }).toList();
+
+                    final currentFlavorAllowed = allowed.any((f) => f.id == next.baseFlavor);
+                    if (!currentFlavorAllowed && allowed.isNotEmpty) {
+                      next = next.copyWith(baseFlavor: allowed.first.id);
+                    }
+                  }
+                  onChanged(next);
+                },
               ),
             );
           }).toList(),

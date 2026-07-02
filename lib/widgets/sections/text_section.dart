@@ -46,11 +46,11 @@ class TextSection extends StatelessWidget {
             const SizedBox(height: 16),
             LightSlider(
               label: 'حجم النص',
-              value: config.textSize,
-              min: 0.5,
+              value: config.textSize < 1.0 ? 1.0 : config.textSize,
+              min: 1.0,
               max: 2.5,
-              display: '${config.textSize.toStringAsFixed(1)}x',
-              onChanged: (v) => onChanged(config.copyWith(textSize: v)),
+              display: '${(config.textSize < 1.0 ? 1.0 : config.textSize).toStringAsFixed(1)}x',
+              onChanged: (v) => onChanged(config.copyWith(textSize: v < 1.0 ? 1.0 : v)),
             ),
           ],
         ],
@@ -62,7 +62,13 @@ class TextSection extends StatelessWidget {
     return TextField(
       controller: TextEditingController(text: config.text)
         ..selection = TextSelection.collapsed(offset: config.text.length),
-      onChanged: (v) => onChanged(config.copyWith(text: v)),
+      onChanged: (v) {
+        var next = config.copyWith(text: v);
+        if (v.trim().isNotEmpty && next.textSize < 1.0) {
+          next = next.copyWith(textSize: 1.0);
+        }
+        onChanged(next);
+      },
       maxLength: 30,
       textDirection: TextDirection.rtl,
       style: const TextStyle(color: AppColors.primary, fontSize: 14),
@@ -81,7 +87,7 @@ class TextSection extends StatelessWidget {
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
     );
   }

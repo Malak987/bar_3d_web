@@ -81,6 +81,11 @@ class ApiServiceEnhanced {
           height: (s['height'] ?? 0.3).toDouble(),
           price: (s['price'] ?? 0).toDouble(),
         )).toList();
+        cakeSizes.sort((a, b) {
+          final numA = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(a.label)?.group(0) ?? '') ?? a.radius * 20;
+          final numB = double.tryParse(RegExp(r'\d+(\.\d+)?').firstMatch(b.label)?.group(0) ?? '') ?? b.radius * 20;
+          return numA.compareTo(numB);
+        });
       }
 
       // ── 3. COLORS — Keep original palette, just add UUIDs ──
@@ -127,10 +132,30 @@ class ApiServiceEnhanced {
         pipingOptions = (d['pipings'] as List).map((p) {
           final jsId = _t(p['nameEn']);
           _pipingJsToUuid[jsId] = _t(p['id']);
+          final rawIcon = _t(p['icon']);
+          String resolvedIcon = rawIcon;
+          if (rawIcon.isEmpty || rawIcon == '✨' || rawIcon == '✦' || rawIcon == '⭐') {
+            final key = '$jsId ${_t(p['nameAr'])}'.toLowerCase();
+            if (key.contains('open') || key.contains('مفتوح')) resolvedIcon = '🌟';
+            else if (key.contains('closed') || key.contains('مغلق')) resolvedIcon = '💫';
+            else if (key.contains('rose') || key.contains('ورد')) resolvedIcon = '🌹';
+            else if (key.contains('flower') || key.contains('زهر')) resolvedIcon = '🌸';
+            else if (key.contains('leaf') || key.contains('ورق') || key.contains('شجر')) resolvedIcon = '🍃';
+            else if (key.contains('shell') || key.contains('صدف')) resolvedIcon = '🐚';
+            else if (key.contains('wave') || key.contains('موج')) resolvedIcon = '🌊';
+            else if (key.contains('basket') || key.contains('سل')) resolvedIcon = '🧺';
+            else if (key.contains('lace') || key.contains('دانتيل') || key.contains('لؤلؤ')) resolvedIcon = '📿';
+            else if (key.contains('thread') || key.contains('خيوط')) resolvedIcon = '🧶';
+            else if (key.contains('grass') || key.contains('عشب')) resolvedIcon = '🌾';
+            else if (key.contains('heart') || key.contains('قلب')) resolvedIcon = '💖';
+            else if (key.contains('round') || key.contains('دائر')) resolvedIcon = '⚪';
+            else if (key.contains('sphere') || key.contains('كرات')) resolvedIcon = '🔮';
+            else resolvedIcon = '🌟';
+          }
           return PipingMeta(
             id: jsId.isNotEmpty ? jsId : _t(p['id']),
             label: _t(p['nameAr']).isNotEmpty ? _t(p['nameAr']) : jsId,
-            icon: _t(p['icon']).isNotEmpty ? _t(p['icon']) : '✦',
+            icon: resolvedIcon,
             description: _t(p['descriptionAr']).isNotEmpty ? _t(p['descriptionAr']) : _t(p['descriptionEn']),
             extraPrice: (p['extraPrice'] ?? 0).toDouble(),
           );

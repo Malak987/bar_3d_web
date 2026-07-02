@@ -37,10 +37,14 @@ class CakeCustomizationWizard extends StatelessWidget {
   });
 
   static const _steps = <_WizardStepMeta>[
-    _WizardStepMeta('Cake Design', 'التصميم', Icons.cake_outlined),
-    _WizardStepMeta('Colors & Decoration', 'الألوان', Icons.palette_outlined),
-    _WizardStepMeta('Toppings & Extras', 'الإضافات', Icons.auto_awesome),
-    _WizardStepMeta('Photo & Message', 'الصورة والنص', Icons.photo_camera_outlined),
+    _WizardStepMeta('Size', 'المقاس', Icons.straighten),
+    _WizardStepMeta('Base Flavor', 'نكهة القاعدة', Icons.cake_outlined),
+    _WizardStepMeta('Cake Colors', 'ألوان الكيكة', Icons.color_lens_outlined),
+    _WizardStepMeta('Piping Area', 'مساحة التزيين', Icons.border_outer),
+    _WizardStepMeta('Piping Shape', 'شكل التزيين', Icons.stars_outlined),
+    _WizardStepMeta('Piping Colors', 'ألوان التزيين', Icons.palette_outlined),
+    _WizardStepMeta('Photo or Text', 'الصورة أو النص', Icons.photo_camera_outlined),
+    _WizardStepMeta('Addons & Extras', 'الإضافات', Icons.auto_awesome),
     _WizardStepMeta('Review Design', 'المراجعة', Icons.fact_check_outlined),
   ];
 
@@ -80,60 +84,150 @@ class CakeCustomizationWizard extends StatelessWidget {
     switch (step) {
       case 0:
         return _StepScroll(
-          key: const ValueKey('step-design'),
+          key: const ValueKey('step-size'),
           children: [
             _PremiumPanel(
-              title: 'شكل الكيكة',
-              subtitle: 'اختر شكل التصميم الأساسي',
+              title: 'شكل الكيكة الأساسي',
+              subtitle: 'اختر شكل التصميم العام',
               child: const _ShapeSelection(),
             ),
             const SizedBox(height: 12),
             SizeSection(config: config, onChanged: onChanged),
-            const SizedBox(height: 12),
-            BaseFlavorSection(config: config, onChanged: onChanged),
-            const SizedBox(height: 12),
-            PipingStyleSection(config: config, onChanged: onChanged),
           ],
         );
       case 1:
         return _StepScroll(
-          key: const ValueKey('step-colors'),
+          key: const ValueKey('step-flavor'),
+          children: [
+            BaseFlavorSection(config: config, onChanged: onChanged),
+          ],
+        );
+      case 2:
+        return _StepScroll(
+          key: const ValueKey('step-cake-colors'),
           children: [
             _SelectedColorStrip(config: config),
             const SizedBox(height: 12),
             CakeColorsSection(config: config, onChanged: onChanged),
-            const SizedBox(height: 12),
+          ],
+        );
+      case 3:
+        return _StepScroll(
+          key: const ValueKey('step-piping-style'),
+          children: [
+            PipingStyleSection(config: config, onChanged: onChanged),
+          ],
+        );
+      case 4:
+        return _StepScroll(
+          key: const ValueKey('step-piping-shape'),
+          children: [
             PipingShapesSection(config: config, onChanged: onChanged),
-            const SizedBox(height: 12),
+          ],
+        );
+      case 5:
+        return _StepScroll(
+          key: const ValueKey('step-piping-colors'),
+          children: [
             PipingColorsSection(config: config, onChanged: onChanged),
           ],
         );
-      case 2:
+      case 6:
+        return _StepScroll(
+          key: const ValueKey('step-photo-text'),
+          children: [
+            _OptionalHint(
+              title: 'تعليمات هامة',
+              text: 'اختر إما رفع صورة على الكيكة أو كتابة نص مخصص (لا يمكن الجمع بين الاثنين معاً في نفس الوقت).',
+            ),
+            const SizedBox(height: 8),
+            PhotoSection(
+              config: config,
+              onChanged: (next) {
+                var updated = next;
+                if (updated.topImage != null) {
+                  updated = updated.copyWith(text: '');
+                }
+                onChanged(updated);
+              },
+            ),
+            const SizedBox(height: 16),
+            TextSection(
+              config: config,
+              onChanged: (next) {
+                var updated = next;
+                if (updated.text.trim().isNotEmpty) {
+                  updated = CakeConfig(
+                    gradientColorCount: updated.gradientColorCount,
+                    colors: updated.colors,
+                    pipingType: updated.pipingType,
+                    pipingColor: updated.pipingColor,
+                    pipingColorCount: updated.pipingColorCount,
+                    pipingColors: updated.pipingColors,
+                    pipingPlacement: updated.pipingPlacement,
+                    pipingSize: updated.pipingSize,
+                    text: updated.text,
+                    textColor: updated.textColor,
+                    textPosition: updated.textPosition,
+                    textSize: updated.textSize,
+                    fontStyle: updated.fontStyle,
+                    imageScale: updated.imageScale,
+                    topImage: null,
+                    autoRotate: updated.autoRotate,
+                    cakeScale: updated.cakeScale,
+                    cakeHeight: updated.cakeHeight,
+                    cakeRadius: updated.cakeRadius,
+                    plateColor: updated.plateColor,
+                    roughness: updated.roughness,
+                    metalness: updated.metalness,
+                    clearcoat: updated.clearcoat,
+                    baseFlavor: updated.baseFlavor,
+                    edgeTop: updated.edgeTop,
+                    edgeBottom: updated.edgeBottom,
+                    selectedAddons: updated.selectedAddons,
+                    addonColors: updated.addonColors,
+                    secretMessageText: updated.secretMessageText,
+                  );
+                }
+                onChanged(updated);
+              },
+            ),
+          ],
+        );
+      case 7:
         return _StepScroll(
           key: const ValueKey('step-addons'),
           children: [
             _PremiumPanel(
               title: 'Toppings Grid',
-              subtitle: 'اختاري أكثر من topping حسب التصميم',
-              child: _AddonGrid(config: config, onChanged: onChanged, showExtras: false),
+              subtitle: 'اختر أكثر من إضافة (عند اختيار فيونكة أو شريط ومساحة التزيين كاملة، تتحول تلقائياً للحواف)',
+              child: _AddonGrid(
+                config: config,
+                onChanged: (next) {
+                  var updated = next;
+                  final hasRibbonOrBow = updated.selectedAddons.any((a) =>
+                  a.toLowerCase().contains('ribbon') ||
+                      a.toLowerCase().contains('bow') ||
+                      a == 'giftRibbon' ||
+                      a == 'bow');
+                  if (hasRibbonOrBow && updated.pipingPlacement == 'full') {
+                    updated = updated.copyWith(pipingPlacement: 'edges');
+                  }
+                  onChanged(updated);
+                },
+                showExtras: false,
+              ),
             ),
             const SizedBox(height: 12),
             _PremiumPanel(
               title: 'Extras Grid',
               subtitle: 'إضافات اختيارية بسعر إضافي',
-              child: _AddonGrid(config: config, onChanged: onChanged, showExtras: true),
+              child: _AddonGrid(
+                config: config,
+                onChanged: onChanged,
+                showExtras: true,
+              ),
             ),
-          ],
-        );
-      case 3:
-        return _StepScroll(
-          key: const ValueKey('step-photo-message'),
-          children: [
-            _OptionalHint(title: 'Cake Photo', text: 'الصورة اختيارية ويمكن تركها بدون رفع.'),
-            PhotoSection(config: config, onChanged: onChanged),
-            const SizedBox(height: 12),
-            _OptionalHint(title: 'Custom Message', text: 'النص اختياري — مثال: Happy Birthday / Congratulations'),
-            TextSection(config: config, onChanged: onChanged),
           ],
         );
       default:
@@ -212,7 +306,7 @@ class _WizardHeader extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   height: 6,
-                  margin: EdgeInsetsDirectional.only(end: i == CakeCustomizationWizard._steps.length - 1 ? 0 : 6),
+                  margin: EdgeInsetsDirectional.only(end: i == CakeCustomizationWizard._steps.length - 1 ? 0 : 3),
                   decoration: BoxDecoration(
                     color: active ? AppColors.teal : AppColors.border,
                     borderRadius: BorderRadius.circular(999),

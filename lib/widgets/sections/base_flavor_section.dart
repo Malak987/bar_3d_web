@@ -18,13 +18,39 @@ class BaseFlavorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sortedSizes = List<CakeSizeOption>.from(cakeSizes)
+      ..sort((a, b) => a.radius.compareTo(b.radius));
+    final currentSize = sortedSizes.where((s) => (s.radius - config.cakeRadius).abs() < 0.05).firstOrNull;
+    final is10 = (currentSize != null && (currentSize.label.contains('10') || currentSize.id == '10' || currentSize.label.contains('١٠') || currentSize == sortedSizes.firstOrNull));
+
+    var allowedFlavors = is10
+        ? baseFlavors.where((f) {
+      final lbl = '${f.id} ${f.label} ${f.arabicLabel}'.toLowerCase();
+      if (lbl.contains('mix') || lbl.contains('ميكس') || lbl.contains('نصف') || lbl.contains('مشكل') || lbl.contains('half') || lbl.contains('duo') || lbl.contains('خليط')) {
+        return false;
+      }
+      return lbl.contains('choc') || lbl.contains('vanil') || lbl.contains('شيكولات') || lbl.contains('فانيلي');
+    }).toList()
+        : baseFlavors;
+
+    if (is10 && allowedFlavors.isEmpty) {
+      allowedFlavors = baseFlavors.where((f) {
+        final lbl = '${f.id} ${f.label} ${f.arabicLabel}'.toLowerCase();
+        return !(lbl.contains('mix') || lbl.contains('ميكس') || lbl.contains('نصف') || lbl.contains('half'));
+      }).toList();
+    }
+
+    final listToShow = allowedFlavors.isNotEmpty ? allowedFlavors : baseFlavors;
+
     return Section(
       number: 2,
       title: 'BASE FLAVOR',
       arabicTitle: 'نكهة القاعدة',
-      subtitle: baseFlavors.isEmpty ? 'لا توجد نكهات متاحة حالياً' : 'اختر النكهة المناسبة لتصميمك',
+      subtitle: is10
+          ? 'مقاس 10 متاح به اختيار شيكولاتة أو فانيليا فقط (غير متاح الميكس)'
+          : (listToShow.isEmpty ? 'لا توجد نكهات متاحة حالياً' : 'اختر النكهة المناسبة لتصميمك'),
       child: Row(
-        children: baseFlavors.map((f) {
+        children: listToShow.map((f) {
           final selected = config.baseFlavor == f.id;
           return Expanded(
             child: Padding(

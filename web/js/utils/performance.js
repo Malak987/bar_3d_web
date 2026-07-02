@@ -27,7 +27,7 @@
       mobile,
       tier,
       low,
-      dpr: Math.min(window.devicePixelRatio || 1, low ? 1.25 : 1.75),
+      dpr: Math.min(window.devicePixelRatio || 1, low ? 1.25 : 1.6),
       antialias: !low,
       shadowMapSize: low ? 512 : 1024,
       topCanvasSize: low ? 1024 : 1536,
@@ -54,7 +54,14 @@
   function enableCulling(obj) {
     if (!obj) return;
     obj.traverse((child) => {
-      if (child.isMesh || child.isInstancedMesh) child.frustumCulled = true;
+      if (child.isMesh || child.isInstancedMesh || child.isLine || child.isPoints) {
+        if (child.isInstancedMesh && typeof child.computeBoundingSphere === 'function') {
+          child.computeBoundingSphere();
+        } else if (child.geometry && !child.geometry.boundingSphere && typeof child.geometry.computeBoundingSphere === 'function') {
+          child.geometry.computeBoundingSphere();
+        }
+        child.frustumCulled = true;
+      }
     });
   }
 

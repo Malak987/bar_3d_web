@@ -1,10 +1,6 @@
 /**
- * ─────────────────────────────────────────────────────────────
  * orbit_controls.js — Minimal OrbitControls (mouse + touch)
- *
- * Stripped-down inline port — sufficient for our needs and
- * avoids loading the full three-examples bundle.
- * ─────────────────────────────────────────────────────────────
+ * Stripped-down inline port with tuned rotateSpeed and smooth damping for calm rotation.
  */
 (function () {
   'use strict';
@@ -16,12 +12,13 @@
     this.domElement = dom;
     this.target   = new THREE.Vector3();
     this.enableDamping = true;
-    this.dampingFactor = 0.05;
-    this.minDistance   = 1.5;
-    this.maxDistance   = 7.0;
+    this.dampingFactor = 0.45; // Immediate, graceful stop upon release
+    this.rotateSpeed   = 0.025; // Ultra calm, gentle rotation speed
+    this.minDistance   = 1.05;
+    this.maxDistance   = 5.6;
     this.maxPolarAngle = Math.PI / 2 - 0.05;
     this.autoRotate    = false;
-    this.autoRotateSpeed = 2.0;
+    this.autoRotateSpeed = 1.0;
     this.onChange = null;
 
     const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1, PAN: 2 };
@@ -77,6 +74,9 @@
         sphericalDelta.theta *= 1 - scope.dampingFactor;
         sphericalDelta.phi   *= 1 - scope.dampingFactor;
         panOffset.multiplyScalar(1 - scope.dampingFactor);
+        if (Math.abs(sphericalDelta.theta) < 0.0001) sphericalDelta.theta = 0;
+        if (Math.abs(sphericalDelta.phi) < 0.0001) sphericalDelta.phi = 0;
+        if (panOffset.lengthSq() < 0.000001) panOffset.set(0, 0, 0);
       } else {
         sphericalDelta.set(0, 0, 0);
         panOffset.set(0, 0, 0);
@@ -101,8 +101,10 @@
       if (state === STATE.ROTATE) {
         rotateEnd.set(e.clientX, e.clientY);
         rotateDelta.subVectors(rotateEnd, rotateStart);
-        sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x) / dom.clientHeight;
-        sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y) / dom.clientHeight;
+        sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x * scope.rotateSpeed) / dom.clientHeight;
+        sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y * scope.rotateSpeed) / dom.clientHeight;
+        sphericalDelta.theta = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.theta));
+        sphericalDelta.phi   = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.phi));
         rotateStart.copy(rotateEnd);
         if (typeof scope.onChange === 'function') scope.onChange();
       } else if (state === STATE.PAN) {
@@ -145,8 +147,10 @@
       if (state === STATE.ROTATE && e.touches.length === 1) {
         rotateEnd.set(e.touches[0].pageX, e.touches[0].pageY);
         rotateDelta.subVectors(rotateEnd, rotateStart);
-        sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x) / dom.clientHeight;
-        sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y) / dom.clientHeight;
+        sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x * scope.rotateSpeed) / dom.clientHeight;
+        sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y * scope.rotateSpeed) / dom.clientHeight;
+        sphericalDelta.theta = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.theta));
+        sphericalDelta.phi   = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.phi));
         rotateStart.copy(rotateEnd);
         if (typeof scope.onChange === 'function') scope.onChange();
       } else if (state === STATE.DOLLY && e.touches.length === 2) {

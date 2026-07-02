@@ -1,6 +1,6 @@
 /**
  * scene.js — Renderer, camera, lights and floor.
- * Production tuned: adaptive DPR/shadows, lazy texture loading, frustum culling,
+ * Production tuned: adaptive DPR/shadows, precompiled shaders, frustum culling,
  * smaller light count on low-end devices, and thorough disposal.
  */
 (function (root) {
@@ -14,7 +14,7 @@
       this.camera = null;
       this.scene = null;
       this.controls = null;
-      this.profile = root.CD.Perf.profile();
+      this.profile = (root.CD.Perf && root.CD.Perf.profile()) || { dpr: 1.5, low: false, shadowMapSize: 1024, antialias: true };
       this._lastW = 0;
       this._lastH = 0;
       this._ownedTextures = [];
@@ -52,7 +52,7 @@
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = this.profile.low ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.12;
+      this.renderer.toneMappingExposure = 1.15;
       if ('outputColorSpace' in this.renderer) this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
       const c = this.renderer.domElement;
@@ -82,13 +82,11 @@
       this.scene.fog = new THREE.FogExp2(0x1a1f2e, this.profile.low ? 0.014 : 0.018);
 
       this.camera = new THREE.PerspectiveCamera(32, w / h, 0.1, 80);
-      // Closer product-configurator framing: cake fills the preview better
-      // without changing cake dimensions/business config.
       this.camera.position.set(2.05, 1.55, 2.35);
 
       this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
       this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.075;
+      this.controls.dampingFactor = 0.08;
       this.controls.minDistance = 1.05;
       this.controls.maxDistance = 5.6;
       this.controls.maxPolarAngle = Math.PI * 0.75;
@@ -147,7 +145,6 @@
         this.scene.add(top);
       }
 
-      // Lazy non-critical glow texture. Missing texture must not block startup.
       const loader = new THREE.TextureLoader();
       loader.load('glow.png', (glowTex) => {
         if (!this.scene) { glowTex.dispose(); return; }
@@ -190,7 +187,7 @@
         roughness: 0.28,
         metalness: this.profile.low ? 0.18 : 0.32,
       });
-      floorMat.userData.keepTextureMaps = true; // shared marble cache
+      floorMat.userData.keepTextureMaps = true;
       const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(16, 16),
         floorMat,
@@ -199,6 +196,10 @@
       floor.position.y = -0.01;
       floor.receiveShadow = !this.profile.low;
       this.scene.add(floor);
+
+      if (this.renderer && typeof this.renderer.compile === 'function') {
+        try { this.renderer.compile(this.scene, this.camera); } catch (_) {}
+      }
     }
 
     handleResize() {
@@ -206,12 +207,6 @@
       if (w === this._lastW && h === this._lastH) return false;
       this._lastW = w;
       this._lastH = h;
-      // NOTE: intentionally NOT recomputing profile / setPixelRatio here.
-      // Device tier and DPR don't change mid-session, but resize fires very
-      // often on mobile Chrome (URL bar show/hide while scrolling, keyboard
-      // open/close). setPixelRatio() reallocates the framebuffer and is
-      // expensive — calling it on every resize tick was the main cause of
-      // the jank/heaviness. Aspect + size only:
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h, false);

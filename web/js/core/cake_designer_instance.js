@@ -1,7 +1,6 @@
 /**
  * cake_designer_instance.js — per-container instance.
- * Diff based rebuilds are preserved. Rendering is now invalidation driven: no
- * continuous RAF while idle, but still smooth during damping / auto-rotate.
+ * Diff based rebuilds with invalidation and responsive rendering.
  */
 (function (root) {
   'use strict';
@@ -22,11 +21,6 @@
       this._metadata = {};
 
       this.invalidate = this.invalidate.bind(this);
-      // Bind these here (before Scene/_apply run) because both can
-      // synchronously trigger invalidate() -> requestAnimationFrame(this._animate)
-      // during setup. If _animate isn't bound yet at that point, it gets
-      // scheduled unbound and later throws "Cannot set properties of
-      // undefined (setting '_animId')" in strict mode.
       this._animate = this._animate.bind(this);
       this._scheduleResize = this._scheduleResize.bind(this);
       this._onVisibility = this._onVisibility.bind(this);
@@ -48,7 +42,7 @@
       this.rootGroup.add(this.plateGroup, this.bodyGroup, this.pipingGroup, this.topGroup, this.addonsGroup);
       this.scene.scene.add(this.rootGroup);
 
-      this.autoRotate = !!config.autoRotate;
+      this.autoRotate = !!(config && config.autoRotate);
       this._apply(C.Config.normalize(config), null);
 
       window.addEventListener('resize', this._scheduleResize, { passive: true });
@@ -69,7 +63,7 @@
       setTimeout(() => { if (!this.disposed && this.scene.handleResize()) this.invalidate('initial-resize'); }, 0);
       setTimeout(() => { if (!this.disposed && this.scene.handleResize()) this.invalidate('settled-resize'); }, 180);
       this.invalidate('mount');
-      C.Perf.post('ready', { id: container.id });
+      C.Perf && C.Perf.post('ready', { id: container.id });
     }
 
     updateConfig(rawCfg) {
@@ -86,13 +80,13 @@
         } catch (e) {
           this._handleError('apply-config-failed', e);
         }
-      }, 40);
+      }, 20);
     }
 
     resetCamera() { this.scene.resetCamera(); }
     setQuality(mode) { this.scene.setQuality(mode || 'auto'); }
     captureScreenshot(options) { return this.scene.captureScreenshot(options); }
-    capturePreviewImage() { return this.captureScreenshot({ width: 512, height: 512, type: 'image/jpeg', quality: 0.82 }); }
+    capturePreviewImage() { return this.captureScreenshot({ width: 512, height: 512, type: 'image/jpeg', quality: 0.85 }); }
     captureFinalImage() { return this.captureScreenshot({ width: 1600, height: 1600, type: 'image/png' }); }
     exportCustomizationJSON() { return JSON.stringify(this._config || {}, null, 2); }
     exportSelectedOptionsMetadata(extra) {
@@ -158,7 +152,7 @@
       this._resizeTimer = setTimeout(() => {
         this._resizeTimer = null;
         if (!this.disposed && this.scene.handleResize()) this.invalidate('resize');
-      }, 70);
+      }, 60);
     }
 
     _animate() {
@@ -170,7 +164,7 @@
         moving = !!this.scene.controls.update();
       }
       if (this.rootGroup && this.autoRotate) {
-        this.rootGroup.rotation.y += 0.003;
+        this.rootGroup.rotation.y += 0.00025;
         moving = true;
       }
       if ((this._needsRender || moving) && !this.scene._contextLost) {
@@ -178,9 +172,9 @@
         const t0 = performance.now();
         this.scene.renderer.render(this.scene.scene, this.scene.camera);
         const renderMs = performance.now() - t0;
-        if (moving && renderMs > 28) this._slowFrames++;
+        if (!moving && renderMs > 45) this._slowFrames++;
         else this._slowFrames = Math.max(0, this._slowFrames - 1);
-        if (this._slowFrames >= 6) {
+        if (this._slowFrames >= 15) {
           this._slowFrames = 0;
           this.scene.degradeQuality('slow-render-' + Math.round(renderMs) + 'ms');
         }
@@ -208,7 +202,7 @@
       if (dirty.has(FLAGS.BODY)) {
         this._clear(this.bodyGroup);
         const built = C.BodyBuilder.build(this.bodyGroup, next, R, H, baseY, this.matPool);
-        this._topColor = built.topColor;
+        this._topColor = built && built.topColor;
         C.Perf.enableCulling(this.bodyGroup);
       }
       if (dirty.has(FLAGS.TOP) || dirty.has(FLAGS.BODY)) {
@@ -217,12 +211,13 @@
         const hasText = next.text && next.text.trim().length > 0;
         const hasImage = !!next.topImage;
         const BLOCK = ['giftRibbon', 'bow', 'naturalFlowers', 'artificialFlowers', 'babyFlower', 'fruits', 'babyHeartChocolate', 'pearls', 'chocoDrip', 'sprinkles', 'glitter'];
-        const blocked = next.selectedAddons.some((a) => BLOCK.indexOf(a) !== -1);
+        const blocked = next.selectedAddons && next.selectedAddons.some((a) => BLOCK.indexOf(a) !== -1);
         if (hasText || hasImage || !blocked) C.TopCanvasBuilder.build(this.topGroup, next, R, baseY + H + 0.003, topBg);
       }
       if (dirty.has(FLAGS.PIPING)) {
         this._clear(this.pipingGroup);
         C.PipingBuilder.build(this.pipingGroup, next, R, H, baseY, { geo: this.geoPool, mat: this.matPool });
+        this.pipingGroup.visible = true;
         C.Perf.enableCulling(this.pipingGroup);
       }
       if (dirty.has(FLAGS.ADDONS)) {
@@ -231,7 +226,7 @@
         C.Perf.enableCulling(this.addonsGroup);
       }
       this._metadata = {
-        selectedAddons: next.selectedAddons.slice(),
+        selectedAddons: (next.selectedAddons || []).slice(),
         addonColors: Object.assign({}, next.addonColors),
         size: { radius: R, height: H, scale: next.cakeScale },
         piping: { type: next.pipingType, placement: next.pipingPlacement, size: next.pipingSize },
@@ -258,7 +253,7 @@
 
     _handleError(code, error) {
       this._lastError = { code, message: error && (error.message || String(error)), at: Date.now() };
-      C.Perf.post('error', this._lastError);
+      C.Perf && C.Perf.post('error', this._lastError);
       console.warn('[CakeDesigner]', code, error || '');
     }
   }

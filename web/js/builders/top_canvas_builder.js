@@ -87,11 +87,13 @@
   }
 
   function _attachMesh(group, canvas, radius, topY) {
+    const profile = (root.CD.Perf && root.CD.Perf.profile()) || { anisotropy: 8 };
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = profile.anisotropy || 8;
     tex.needsUpdate = true;
 
     const overlay = new THREE.Mesh(
@@ -100,7 +102,7 @@
     );
     overlay.rotation.x = -Math.PI / 2;
     overlay.position.y = topY;
-    overlay.frustumCulled = true;
+    overlay.frustumCulled = false;
     group.add(overlay);
   }
 
