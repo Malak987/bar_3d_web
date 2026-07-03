@@ -57,7 +57,7 @@
     // 4. center
     for (const id of buckets.center) {
       const col = C.AddonHelpers.colorFor(cfg, id);
-      if (id === 'candles')       C.CenterAddons.buildCandles      (group, R, topY, col);
+      if (id === 'candles')       C.CenterAddons.buildCandles      (group, R, topY, col, cfg);
       if (id === 'giftRibbon')    C.CenterAddons.buildGiftRibbon   (group, R, H, baseY, col);
       if (id === 'secretMessage') C.CenterAddons.buildSecretMessage(group, R, topY);
       if (id === 'sparklers')     C.CenterAddons.buildSparklers    (group, R, topY);

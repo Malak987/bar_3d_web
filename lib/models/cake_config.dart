@@ -49,6 +49,9 @@ class CakeConfig {
   final Map<String, String> addonColors;
   final String secretMessageText;
 
+  // Number candles (0-9, max 2 digits)
+  final List<int> candleDigits;
+
   const CakeConfig({
     required this.gradientColorCount,
     required this.colors,
@@ -79,6 +82,7 @@ class CakeConfig {
     required this.selectedAddons,
     required this.addonColors,
     required this.secretMessageText,
+    this.candleDigits = const [],
   });
 
   static const Object _sentinel = Object();
@@ -113,6 +117,7 @@ class CakeConfig {
     List<String>? selectedAddons,
     Map<String, String>? addonColors,
     String? secretMessageText,
+    List<int>? candleDigits,
   }) {
     return CakeConfig(
       gradientColorCount: gradientColorCount ?? this.gradientColorCount,
@@ -146,6 +151,7 @@ class CakeConfig {
       selectedAddons: selectedAddons ?? this.selectedAddons,
       addonColors: addonColors ?? this.addonColors,
       secretMessageText: secretMessageText ?? this.secretMessageText,
+      candleDigits: candleDigits ?? this.candleDigits,
     );
   }
 
@@ -181,73 +187,76 @@ class CakeConfig {
             edgeBottom == other.edgeBottom &&
             _listEquals(selectedAddons, other.selectedAddons) &&
             _mapEquals(addonColors, other.addonColors) &&
-            secretMessageText == other.secretMessageText;
+            secretMessageText == other.secretMessageText &&
+            _listEquals(candleDigits, other.candleDigits);
   }
 
   @override
   int get hashCode => Object.hashAll([
-        gradientColorCount,
-        Object.hashAll(colors),
-        pipingType,
-        pipingColor,
-        pipingColorCount,
-        Object.hashAll(pipingColors),
-        pipingPlacement,
-        pipingSize,
-        text,
-        textColor,
-        textPosition,
-        textSize,
-        fontStyle,
-        imageScale,
-        topImage,
-        autoRotate,
-        cakeScale,
-        cakeHeight,
-        cakeRadius,
-        plateColor,
-        roughness,
-        metalness,
-        clearcoat,
-        baseFlavor,
-        edgeTop,
-        edgeBottom,
-        Object.hashAll(selectedAddons),
-        Object.hashAll(addonColors.entries.map((e) => Object.hash(e.key, e.value))),
-        secretMessageText,
-      ]);
+    gradientColorCount,
+    Object.hashAll(colors),
+    pipingType,
+    pipingColor,
+    pipingColorCount,
+    Object.hashAll(pipingColors),
+    pipingPlacement,
+    pipingSize,
+    text,
+    textColor,
+    textPosition,
+    textSize,
+    fontStyle,
+    imageScale,
+    topImage,
+    autoRotate,
+    cakeScale,
+    cakeHeight,
+    cakeRadius,
+    plateColor,
+    roughness,
+    metalness,
+    clearcoat,
+    baseFlavor,
+    edgeTop,
+    edgeBottom,
+    Object.hashAll(selectedAddons),
+    Object.hashAll(addonColors.entries.map((e) => Object.hash(e.key, e.value))),
+    secretMessageText,
+    Object.hashAll(candleDigits),
+  ]);
 
   Map<String, dynamic> toJson() => {
-        'gradientColorCount': gradientColorCount,
-        'colors': colors,
-        'pipingType': pipingType,
-        'pipingColor': pipingColor,
-        'pipingColorCount': pipingColorCount,
-        'pipingColors': pipingColors,
-        'pipingPlacement': pipingPlacement,
-        'pipingSize': pipingSize,
-        'text': text,
-        'textColor': textColor,
-        'textPosition': textPosition,
-        'textSize': textSize,
-        'fontStyle': fontStyle,
-        'imageScale': imageScale,
-        'topImage': topImage,
-        'autoRotate': autoRotate,
-        'cakeScale': cakeScale,
-        'cakeHeight': cakeHeight,
-        'cakeRadius': cakeRadius,
-        'plateColor': plateColor,
-        'roughness': roughness,
-        'metalness': metalness,
-        'clearcoat': clearcoat,
-        'baseFlavor': baseFlavor,
-        'edgeTop': edgeTop,
-        'edgeBottom': edgeBottom,
-        'selectedAddons': selectedAddons,
-        'addonColors': addonColors,
-        'secretMessageText': secretMessageText,
-      };
+    'gradientColorCount': gradientColorCount,
+    'colors': colors,
+    'pipingType': pipingType,
+    'pipingColor': pipingColor,
+    'pipingColorCount': pipingColorCount,
+    'pipingColors': pipingColors,
+    'pipingPlacement': pipingPlacement,
+    'pipingSize': pipingSize,
+    'text': text,
+    'textColor': textColor,
+    'textPosition': textPosition,
+    'textSize': textSize,
+    'fontStyle': fontStyle,
+    'imageScale': imageScale,
+    'topImage': topImage,
+    'autoRotate': autoRotate,
+    'cakeScale': cakeScale,
+    'cakeHeight': cakeHeight,
+    'cakeRadius': cakeRadius,
+    'plateColor': plateColor,
+    'roughness': roughness,
+    'metalness': metalness,
+    'clearcoat': clearcoat,
+    'baseFlavor': baseFlavor,
+    'edgeTop': edgeTop,
+    'edgeBottom': edgeBottom,
+    'selectedAddons': selectedAddons,
+    'addonColors': addonColors,
+    'secretMessageText': secretMessageText,
+    'candleDigits': candleDigits,
+  };
 }
 
 bool _listEquals<T>(List<T> a, List<T> b) {

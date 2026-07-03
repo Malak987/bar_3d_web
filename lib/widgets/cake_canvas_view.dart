@@ -396,7 +396,7 @@ class _HintBar extends StatelessWidget {
         ],
       ),
       child: const Text(
-        'اسحب للتدوير • العجلة للتكبير',
+        'اسحب للتدوير • قرّب أو بعّد للتكبير والتصغير',
         style: TextStyle(color: Color(0xFF6B7280), fontSize: 11),
       ),
     );

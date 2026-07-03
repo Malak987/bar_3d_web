@@ -219,7 +219,16 @@ class ApiService {
         paletteColors.sort((a, b) {
           int groupCompare = colorGroups.indexOf(a.group).compareTo(colorGroups.indexOf(b.group));
           if (groupCompare != 0) return groupCompare;
-          return _luminance(a.hex).compareTo(_luminance(b.hex));
+          // Within each color group, sort light → dark for a smooth visual gradient.
+          // Since colors in the same group already have similar hues,
+          // lightness ordering gives the best eye-pleasing gradient.
+          final hslA = _hsl(a.hex);
+          final hslB = _hsl(b.hex);
+          // Primary: lightness descending (light first → dark last)
+          final lightCompare = hslB[2].compareTo(hslA[2]);
+          if ((hslB[2] - hslA[2]).abs() > 0.03) return lightCompare;
+          // Secondary: hue for very similar lightness
+          return hslA[0].compareTo(hslB[0]);
         });
       }
 
@@ -563,17 +572,47 @@ class ApiService {
     return r * 0.299 + g * 0.587 + b * 0.114;
   }
 
+  /// Returns [hue (0-360), saturation (0-1), lightness (0-1)]
+  static List<double> _hsl(String hex) {
+    final h = hex.replaceAll('#', '').toUpperCase();
+    if (h.length < 6) return [0, 0, 1];
+    final r = (int.tryParse(h.substring(0, 2), radix: 16) ?? 255) / 255.0;
+    final g = (int.tryParse(h.substring(2, 4), radix: 16) ?? 255) / 255.0;
+    final b = (int.tryParse(h.substring(4, 6), radix: 16) ?? 255) / 255.0;
+
+    final mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    final mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    final delta = mx - mn;
+    final light = (mx + mn) / 2.0;
+
+    if (delta < 0.001) return [0, 0, light];
+
+    final sat = delta / (1 - (2 * light - 1).abs());
+    double hue;
+    if (mx == r) {
+      hue = ((g - b) / delta) % 6;
+    } else if (mx == g) {
+      hue = (b - r) / delta + 2;
+    } else {
+      hue = (r - g) / delta + 4;
+    }
+    hue = (hue * 60) % 360;
+    if (hue < 0) hue += 360;
+    return [hue, sat.clamp(0.0, 1.0), light];
+  }
+
   static String _colorGroup(String hex, [String name = '']) {
     final n = name.toLowerCase();
-    if (n.contains('أبيض') || n.contains('white') || n.contains('كريم') || n.contains('cream') || n.contains('فانيل') || n.contains('بيج') || n.contains('عاجي')) return 'أبيض ومحايد 🤍';
-    if (n.contains('وردي') || n.contains('بينك') || n.contains('pink') || n.contains('زهر') || n.contains('فوشي')) return 'وردي وبنفسجي 🌸';
-    if (n.contains('أحمر') || n.contains('red') || n.contains('عنابي') || n.contains('نبيذ') || n.contains('توت')) return 'أحمر ودافئ ❤️';
-    if (n.contains('أزرق') || n.contains('blue') || n.contains('سماوي') || n.contains('كحلي') || n.contains('تيركواز') || n.contains('تركواز')) return 'أزرق وسماوي 💙';
-    if (n.contains('أخضر') || n.contains('green') || n.contains('فستقي') || n.contains('نعناع') || n.contains('mint') || n.contains('زيتون')) return 'أخضر ودرجاته 💚';
-    if (n.contains('أصفر') || n.contains('yellow') || n.contains('ذهبي') || n.contains('gold') || n.contains('ليمون')) return 'أصفر وذهبي 💛';
-    if (n.contains('برتقال') || n.contains('orange') || n.contains('خوخ') || n.contains('peach') || n.contains('مشمش')) return 'برتقالي وخوخي 🧡';
-    if (n.contains('بني') || n.contains('brown') || n.contains('شوكولات') || n.contains('قهو') || n.contains('كاكاو') || n.contains('كراميل')) return 'بني وشوكولاتة 🍫';
-    if (n.contains('أسود') || n.contains('black') || n.contains('رمادي') || n.contains('gray') || n.contains('فضي')) return 'أسود ورمادي 🖤';
+    if (n.contains('أبيض') || n.contains('white') || n.contains('كريم') || n.contains('cream') || n.contains('فانيل') || n.contains('بيج') || n.contains('عاجي') || n.contains('آيفوري') || n.contains('ivory')) return 'أبيض ومحايد 🤍';
+    if (n.contains('بنفسجي') || n.contains('لافندر') || n.contains('purple') || n.contains('lavender') || n.contains('موف') || n.contains('بنفس')) return 'وردي وبنفسجي 🌸';
+    if (n.contains('وردي') || n.contains('بينك') || n.contains('pink') || n.contains('زهر') || n.contains('فوشي') || n.contains('fuchsia') || n.contains('روز')) return 'وردي وبنفسجي 🌸';
+    if (n.contains('أحمر') || n.contains('red') || n.contains('عنابي') || n.contains('نبيذ') || n.contains('توت') || n.contains('قرمزي') || n.contains('cherry')) return 'أحمر ودافئ ❤️';
+    if (n.contains('أزرق') || n.contains('blue') || n.contains('سماوي') || n.contains('كحلي') || n.contains('تيركواز') || n.contains('تركواز') || n.contains('نيلي') || n.contains('navy') || n.contains('بيبي بلو')) return 'أزرق وسماوي 💙';
+    if (n.contains('أخضر') || n.contains('green') || n.contains('فستقي') || n.contains('نعناع') || n.contains('mint') || n.contains('زيتون') || n.contains('زمرد') || n.contains('تيل') || n.contains('teal')) return 'أخضر ودرجاته 💚';
+    if (n.contains('أصفر') || n.contains('yellow') || n.contains('ذهبي') || n.contains('gold') || n.contains('ليمون') || n.contains('كنارى')) return 'أصفر وذهبي 💛';
+    if (n.contains('برتقال') || n.contains('orange') || n.contains('خوخ') || n.contains('peach') || n.contains('مشمش') || n.contains('سالمون') || n.contains('salmon') || n.contains('كورال') || n.contains('coral')) return 'برتقالي وخوخي 🧡';
+    if (n.contains('بني') || n.contains('brown') || n.contains('شوكولات') || n.contains('قهو') || n.contains('كاكاو') || n.contains('كراميل') || n.contains('ماروون') || n.contains('maroon') || n.contains('بيج غامق')) return 'بني وشوكولاتة 🍫';
+    if (n.contains('أسود') || n.contains('black') || n.contains('رمادي') || n.contains('gray') || n.contains('grey') || n.contains('فضي') || n.contains('silver') || n.contains('فحمي') || n.contains('charcoal')) return 'أسود ورمادي 🖤';
 
     final h = hex.replaceAll('#', '').toUpperCase();
     if (h.length < 6) return 'أبيض ومحايد 🤍';
@@ -603,17 +642,22 @@ class ApiService {
     hue = (hue * 60) % 360;
     if (hue < 0) hue += 360;
 
-    if (hue >= 335 || hue < 15) {
-      if (l > 0.68) return 'وردي وبنفسجي 🌸';
+    if (hue >= 340 || hue < 10) {
+      if (l > 0.65) return 'وردي وبنفسجي 🌸';
       return 'أحمر ودافئ ❤️';
     }
-    if (hue >= 15 && hue < 45) {
+    if (hue >= 10 && hue < 25) {
+      if (l < 0.40) return 'بني وشوكولاتة 🍫';
+      return 'برتقالي وخوخي 🧡';
+    }
+    if (hue >= 25 && hue < 45) {
       if (l < 0.45) return 'بني وشوكولاتة 🍫';
       return 'برتقالي وخوخي 🧡';
     }
-    if (hue >= 45 && hue < 68) return 'أصفر وذهبي 💛';
-    if (hue >= 68 && hue < 165) return 'أخضر ودرجاته 💚';
+    if (hue >= 45 && hue < 70) return 'أصفر وذهبي 💛';
+    if (hue >= 70 && hue < 165) return 'أخضر ودرجاته 💚';
     if (hue >= 165 && hue < 260) return 'أزرق وسماوي 💙';
+    if (hue >= 260 && hue < 340) return 'وردي وبنفسجي 🌸';
     return 'وردي وبنفسجي 🌸';
   }
 

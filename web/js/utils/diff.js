@@ -47,6 +47,7 @@
       'selectedAddons', 'addonColors',
       'cakeRadius', 'cakeHeight',
       'secretMessageText',
+      'candleDigits',
     ],
     plate: [
       'cakeRadius', 'plateColor',

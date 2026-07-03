@@ -1,6 +1,7 @@
 /**
- * orbit_controls.js — Minimal OrbitControls (mouse + touch)
- * Stripped-down inline port with tuned rotateSpeed and smooth damping for calm rotation.
+ * orbit_controls.js — Smooth OrbitControls (mouse + touch)
+ * Tuned for buttery-smooth rotation with proper damping.
+ * No hard clamps — uses momentum-based physics for natural feel.
  */
 (function () {
   'use strict';
@@ -12,29 +13,30 @@
     this.domElement = dom;
     this.target   = new THREE.Vector3();
     this.enableDamping = true;
-    this.dampingFactor = 0.45; // Immediate, graceful stop upon release
-    this.rotateSpeed   = 0.025; // Ultra calm, gentle rotation speed
+    this.dampingFactor = 0.08;
+    this.rotateSpeed   = 0.35;
+    this.zoomSpeed     = 0.85;
+    this.enableRotate  = true;
+    this.enableZoom    = true;
+    this.enablePan     = false;      // Pan disabled — zoom only
     this.minDistance   = 1.05;
     this.maxDistance   = 5.6;
+    this.minPolarAngle = 0.15;
     this.maxPolarAngle = Math.PI / 2 - 0.05;
     this.autoRotate    = false;
     this.autoRotateSpeed = 1.0;
     this.onChange = null;
 
-    const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1, PAN: 2 };
+    const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1 };
     let state = STATE.NONE;
     let scale = 1;
 
     const spherical      = new THREE.Spherical();
     const sphericalDelta = new THREE.Spherical();
-    const panOffset      = new THREE.Vector3();
 
     const rotateStart = new THREE.Vector2();
     const rotateEnd   = new THREE.Vector2();
     const rotateDelta = new THREE.Vector2();
-    const panStart    = new THREE.Vector2();
-    const panEnd      = new THREE.Vector2();
-    const panDelta    = new THREE.Vector2();
 
     let touchStartDist = 0;
 
@@ -60,11 +62,14 @@
         spherical.theta += sphericalDelta.theta;
         spherical.phi   += sphericalDelta.phi;
       }
-      spherical.phi    = Math.max(EPS, Math.min(Math.PI - EPS, spherical.phi));
+
+      // Clamp vertical angle
+      spherical.phi = Math.max(scope.minPolarAngle, Math.min(scope.maxPolarAngle, spherical.phi));
+
+      // Apply zoom
       spherical.radius = Math.max(scope.minDistance,
                           Math.min(scope.maxDistance, spherical.radius * scale));
 
-      scope.target.add(panOffset);
       offset.setFromSpherical(spherical);
       offset.applyQuaternion(quatInv);
       camera.position.copy(scope.target).add(offset);
@@ -73,13 +78,11 @@
       if (scope.enableDamping) {
         sphericalDelta.theta *= 1 - scope.dampingFactor;
         sphericalDelta.phi   *= 1 - scope.dampingFactor;
-        panOffset.multiplyScalar(1 - scope.dampingFactor);
-        if (Math.abs(sphericalDelta.theta) < 0.0001) sphericalDelta.theta = 0;
-        if (Math.abs(sphericalDelta.phi) < 0.0001) sphericalDelta.phi = 0;
-        if (panOffset.lengthSq() < 0.000001) panOffset.set(0, 0, 0);
+        // Stop when values are negligible
+        if (Math.abs(sphericalDelta.theta) < 0.00001) sphericalDelta.theta = 0;
+        if (Math.abs(sphericalDelta.phi)   < 0.00001) sphericalDelta.phi = 0;
       } else {
         sphericalDelta.set(0, 0, 0);
-        panOffset.set(0, 0, 0);
       }
       scale = 1;
 
@@ -91,77 +94,80 @@
       return false;
     };
 
+    // ── Mouse ────────────────────────────────────────────
+
     function onMouseDown(e) {
-      if (e.button === 0) { state = STATE.ROTATE; rotateStart.set(e.clientX, e.clientY); }
-      else if (e.button === 2) { state = STATE.PAN; panStart.set(e.clientX, e.clientY); }
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup',   onMouseUp);
-    }
-    function onMouseMove(e) {
-      if (state === STATE.ROTATE) {
-        rotateEnd.set(e.clientX, e.clientY);
-        rotateDelta.subVectors(rotateEnd, rotateStart);
-        sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x * scope.rotateSpeed) / dom.clientHeight;
-        sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y * scope.rotateSpeed) / dom.clientHeight;
-        sphericalDelta.theta = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.theta));
-        sphericalDelta.phi   = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.phi));
-        rotateStart.copy(rotateEnd);
-        if (typeof scope.onChange === 'function') scope.onChange();
-      } else if (state === STATE.PAN) {
-        panEnd.set(e.clientX, e.clientY);
-        panDelta.subVectors(panEnd, panStart);
-        const off = new THREE.Vector3();
-        off.copy(camera.position).sub(scope.target);
-        const dist = off.length() * Math.tan((camera.fov / 2) * Math.PI / 180);
-        const left = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0)
-                      .multiplyScalar(-2 * panDelta.x * dist / dom.clientHeight);
-        const up   = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1)
-                      .multiplyScalar(2 * panDelta.y * dist / dom.clientHeight);
-        panOffset.add(left).add(up);
-        panStart.copy(panEnd);
-        if (typeof scope.onChange === 'function') scope.onChange();
+      if (!scope.enableRotate && e.button === 0) return;
+      if (e.button === 0) {
+        state = STATE.ROTATE;
+        rotateStart.set(e.clientX, e.clientY);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup',   onMouseUp);
       }
     }
+
+    function onMouseMove(e) {
+      if (state !== STATE.ROTATE) return;
+      rotateEnd.set(e.clientX, e.clientY);
+      rotateDelta.subVectors(rotateEnd, rotateStart);
+
+      sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x * scope.rotateSpeed) / dom.clientHeight;
+      sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y * scope.rotateSpeed) / dom.clientHeight;
+
+      rotateStart.copy(rotateEnd);
+      if (typeof scope.onChange === 'function') scope.onChange();
+    }
+
     function onMouseUp() {
       state = STATE.NONE;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup',   onMouseUp);
     }
+
     function onWheel(e) {
-      scale *= e.deltaY < 0 ? 0.92 : 1 / 0.92;
+      if (!scope.enableZoom) return;
+      const factor = Math.pow(0.95, scope.zoomSpeed);
+      scale *= e.deltaY < 0 ? factor : 1 / factor;
       if (typeof scope.onChange === 'function') scope.onChange();
     }
+
+    // ── Touch ────────────────────────────────────────────
+
     function onTouchStart(e) {
-      if (e.touches.length === 1) {
+      if (e.touches.length === 1 && scope.enableRotate) {
         state = STATE.ROTATE;
         rotateStart.set(e.touches[0].pageX, e.touches[0].pageY);
-      } else if (e.touches.length === 2) {
+      } else if (e.touches.length === 2 && scope.enableZoom) {
         state = STATE.DOLLY;
         const dx = e.touches[0].pageX - e.touches[1].pageX;
         const dy = e.touches[0].pageY - e.touches[1].pageY;
         touchStartDist = Math.hypot(dx, dy);
       }
     }
+
     function onTouchMove(e) {
       e.preventDefault();
       if (state === STATE.ROTATE && e.touches.length === 1) {
         rotateEnd.set(e.touches[0].pageX, e.touches[0].pageY);
         rotateDelta.subVectors(rotateEnd, rotateStart);
+
         sphericalDelta.theta -= (2 * Math.PI * rotateDelta.x * scope.rotateSpeed) / dom.clientHeight;
         sphericalDelta.phi   -= (2 * Math.PI * rotateDelta.y * scope.rotateSpeed) / dom.clientHeight;
-        sphericalDelta.theta = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.theta));
-        sphericalDelta.phi   = Math.max(-0.0015, Math.min(0.0015, sphericalDelta.phi));
+
         rotateStart.copy(rotateEnd);
         if (typeof scope.onChange === 'function') scope.onChange();
+
       } else if (state === STATE.DOLLY && e.touches.length === 2) {
         const dx = e.touches[0].pageX - e.touches[1].pageX;
         const dy = e.touches[0].pageY - e.touches[1].pageY;
-         const d  = Math.hypot(dx, dy);
-                scale *= d > touchStartDist ? 0.92 : 1 / 0.92;  // pinch out = zoom in
-                touchStartDist = d;
-                if (typeof scope.onChange === 'function') scope.onChange();
+        const d  = Math.hypot(dx, dy);
+        const factor = Math.pow(0.95, scope.zoomSpeed);
+        scale *= d > touchStartDist ? factor : 1 / factor;
+        touchStartDist = d;
+        if (typeof scope.onChange === 'function') scope.onChange();
       }
     }
+
     function onTouchEnd() { state = STATE.NONE; }
     function noop(e) { e.preventDefault(); }
 

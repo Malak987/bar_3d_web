@@ -155,16 +155,23 @@
       }, 60);
     }
 
-    _animate() {
+    _animate(timestamp) {
       this._animId = null;
       if (this.disposed || !this.visible) return;
+
+      // Delta time for frame-rate independent rotation
+      if (!this._lastTime) this._lastTime = timestamp;
+      const dt = Math.min((timestamp - this._lastTime) / 1000, 0.1); // cap at 100ms
+      this._lastTime = timestamp;
+
       let moving = false;
       if (this.scene.controls) {
         this.scene.controls.autoRotate = false;
         moving = !!this.scene.controls.update();
       }
       if (this.rootGroup && this.autoRotate) {
-        this.rootGroup.rotation.y += 0.00025;
+        // Frame-rate independent: ~6 degrees/sec (smooth, gentle)
+        this.rootGroup.rotation.y += 0.105 * dt;
         moving = true;
       }
       if ((this._needsRender || moving) && !this.scene._contextLost) {

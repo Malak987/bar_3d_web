@@ -87,9 +87,13 @@
       this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.08;
-      this.controls.minDistance = 1.05;
-      this.controls.maxDistance = 5.6;
-      this.controls.maxPolarAngle = Math.PI * 0.75;
+      this.controls.rotateSpeed   = 0.35;
+      this.controls.zoomSpeed     = 0.85;
+      this.controls.enablePan     = false;
+      this.controls.minDistance   = 1.05;
+      this.controls.maxDistance   = 5.6;
+      this.controls.minPolarAngle = 0.15;
+      this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
       this.controls.target.set(0, 0.52, 0);
       this.controls.onChange = () => this.hooks.invalidate && this.hooks.invalidate('controls');
       this.controls.update();

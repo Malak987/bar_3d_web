@@ -33,6 +33,7 @@
     selectedAddons:    [],
     addonColors:       {},
     secretMessageText: '',
+    candleDigits:      [],
   };
 
   function normalize(input) {
@@ -101,6 +102,7 @@
       addonColors:        (cfg.addonColors && typeof cfg.addonColors === 'object')
                             ? Object.assign({}, cfg.addonColors) : {},
       secretMessageText:  String(cfg.secretMessageText || ''),
+      candleDigits:       Array.isArray(cfg.candleDigits) ? cfg.candleDigits.slice() : [],
     };
   }
 
