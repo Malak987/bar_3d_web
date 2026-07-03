@@ -11,7 +11,10 @@
   'use strict';
 
   class MaterialPool {
-    constructor() { this.cache = new Map(); }
+    constructor(lowPower) {
+      this.cache = new Map();
+      this.lowPower = !!lowPower;
+    }
 
     /**
      * @param {string} colorHex
@@ -21,12 +24,19 @@
      */
     physical(colorHex, opts) {
       opts = opts || {};
+      // On mobile/low-tier: force clearcoat=0. three.js only compiles the
+      // USE_CLEARCOAT shader branch (extra Fresnel + specular lobe per
+      // fragment) when clearcoat > 0, so this is a real shader-complexity
+      // cut, not just a visual tweak — applied to every piping/addon/body
+      // material since they all funnel through this pool.
+      const clearcoat = this.lowPower ? 0 : (opts.clearcoat ?? 0.4);
+      const clearcoatRoughness = this.lowPower ? 0 : (opts.clearcoatRoughness ?? 0.2);
       const key = [
         colorHex || 'vc',
         opts.roughness ?? 0.3,
         opts.metalness ?? 0.05,
-        opts.clearcoat ?? 0.4,
-        opts.clearcoatRoughness ?? 0.2,
+        clearcoat,
+        clearcoatRoughness,
         opts.vertexColors ? 1 : 0,
       ].join('|');
 
@@ -36,8 +46,8 @@
           color:    colorHex ? new THREE.Color(colorHex) : 0xffffff,
           roughness: opts.roughness ?? 0.3,
           metalness: opts.metalness ?? 0.05,
-          clearcoat: opts.clearcoat ?? 0.4,
-          clearcoatRoughness: opts.clearcoatRoughness ?? 0.2,
+          clearcoat,
+          clearcoatRoughness,
           vertexColors: !!opts.vertexColors,
         });
         this.cache.set(key, m);

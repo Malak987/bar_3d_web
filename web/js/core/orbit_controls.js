@@ -13,8 +13,8 @@
     this.domElement = dom;
     this.target   = new THREE.Vector3();
     this.enableDamping = true;
-    this.dampingFactor = 0.08;
-    this.rotateSpeed   = 0.35;
+    this.dampingFactor = 0.1;
+    this.rotateSpeed   = 0.42;
     this.zoomSpeed     = 0.85;
     this.enableRotate  = true;
     this.enableZoom    = true;
@@ -26,6 +26,13 @@
     this.autoRotate    = false;
     this.autoRotateSpeed = 1.0;
     this.onChange = null;
+    // Fired on drag/pinch start & end (after touch/mouse up) so the caller
+    // can temporarily render at reduced resolution while the user is
+    // actively moving the camera — makes rotate/zoom feel instant, then
+    // the full-quality frame snaps back in once they let go.
+    this.isInteracting = false;
+    this.onInteractionStart = null;
+    this.onInteractionEnd = null;
 
     const STATE = { NONE: -1, ROTATE: 0, DOLLY: 1 };
     let state = STATE.NONE;
@@ -103,6 +110,8 @@
         rotateStart.set(e.clientX, e.clientY);
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup',   onMouseUp);
+        scope.isInteracting = true;
+        if (typeof scope.onInteractionStart === 'function') scope.onInteractionStart();
       }
     }
 
@@ -122,6 +131,8 @@
       state = STATE.NONE;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup',   onMouseUp);
+      scope.isInteracting = false;
+      if (typeof scope.onInteractionEnd === 'function') scope.onInteractionEnd();
     }
 
     function onWheel(e) {
@@ -143,6 +154,8 @@
         const dy = e.touches[0].pageY - e.touches[1].pageY;
         touchStartDist = Math.hypot(dx, dy);
       }
+      scope.isInteracting = true;
+      if (typeof scope.onInteractionStart === 'function') scope.onInteractionStart();
     }
 
     function onTouchMove(e) {
@@ -168,7 +181,11 @@
       }
     }
 
-    function onTouchEnd() { state = STATE.NONE; }
+    function onTouchEnd() {
+      state = STATE.NONE;
+      scope.isInteracting = false;
+      if (typeof scope.onInteractionEnd === 'function') scope.onInteractionEnd();
+    }
     function noop(e) { e.preventDefault(); }
 
     dom.addEventListener('mousedown',   onMouseDown);

@@ -30,7 +30,7 @@
         error: (code, error) => this._handleError(code, error),
       });
       this.geoPool = new C.GeometryPool();
-      this.matPool = new C.MaterialPool();
+      this.matPool = new C.MaterialPool(this.scene.profile.low);
       this._config = null;
 
       this.rootGroup = new THREE.Group();
@@ -241,6 +241,10 @@
         updatedAt: new Date().toISOString(),
       };
       this._config = next;
+      // Cake shape/position changed — shadow needs a one-time recompute.
+      // Pure camera orbit/zoom does NOT go through _apply(), so those
+      // frames correctly skip the shadow pass entirely now.
+      if (dirty.size) this.scene.markShadowDirty();
     }
 
     _clear(group) {

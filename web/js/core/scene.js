@@ -21,6 +21,8 @@
       this._contextLost = false;
       this._qualityMode = 'auto';
       this._qualityScale = 1;
+      this._interacting = false;
+      this._interactionTimer = null;
       this._onContextLost = null;
       this._onContextRestored = null;
 
@@ -49,8 +51,16 @@
       });
       this.renderer.setPixelRatio(this._effectiveDpr());
       this.renderer.setSize(w, h, false);
-      this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = this.profile.low ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+      this.renderer.shadowMap.enabled = !this.profile.low;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      // Static-shadow pattern: three.js recomputes the ENTIRE shadow pass
+      // on every render() call by default (autoUpdate=true), even when only
+      // the camera moved and nothing shadow-relevant changed — that means
+      // every orbit/zoom frame was rendering the scene twice at full cost.
+      // We disable that and only flip needsUpdate=true when cake geometry
+      // actually changes (see markShadowDirty(), called from _apply()).
+      this.renderer.shadowMap.autoUpdate = false;
+      this.renderer.shadowMap.needsUpdate = true;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = 1.15;
       if ('outputColorSpace' in this.renderer) this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -96,15 +106,43 @@
       this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
       this.controls.target.set(0, 0.52, 0);
       this.controls.onChange = () => this.hooks.invalidate && this.hooks.invalidate('controls');
+      this.controls.onInteractionStart = () => this.beginInteraction();
+      this.controls.onInteractionEnd = () => this.endInteraction();
       this.controls.update();
     }
 
     _effectiveDpr() {
       const base = this.profile.dpr || 1;
-      if (this._qualityMode === 'low') return Math.min(base, 1.0);
-      if (this._qualityMode === 'medium') return Math.min(base, 1.35);
-      if (this._qualityMode === 'high') return Math.min(window.devicePixelRatio || 1, 2.0);
-      return Math.max(0.75, base * this._qualityScale);
+      let dpr;
+      if (this._qualityMode === 'low') dpr = Math.min(base, 1.0);
+      else if (this._qualityMode === 'medium') dpr = Math.min(base, 1.35);
+      else if (this._qualityMode === 'high') dpr = Math.min(window.devicePixelRatio || 1, 2.0);
+      else dpr = Math.max(0.75, base * this._qualityScale);
+      // While actively dragging/pinching, render at a lower resolution.
+      // The eye can't resolve fine detail during fast motion anyway, and
+      // this is what makes rotate/zoom feel instantly smoother — the full
+      // -res frame snaps back automatically once the user lets go.
+      if (this._interacting) dpr = Math.max(0.6, dpr * 0.65);
+      return dpr;
+    }
+
+    beginInteraction() {
+      if (this._interactionTimer) { clearTimeout(this._interactionTimer); this._interactionTimer = null; }
+      if (this._interacting) return;
+      this._interacting = true;
+      if (this.renderer) this.renderer.setPixelRatio(this._effectiveDpr());
+    }
+
+    endInteraction() {
+      if (this._interactionTimer) clearTimeout(this._interactionTimer);
+      // Small delay before restoring full resolution avoids a visible
+      // flicker if the user immediately grabs the cake again.
+      this._interactionTimer = setTimeout(() => {
+        this._interactionTimer = null;
+        this._interacting = false;
+        if (this.renderer) this.renderer.setPixelRatio(this._effectiveDpr());
+        this.hooks.invalidate && this.hooks.invalidate('interaction-end');
+      }, 120);
     }
 
     setQuality(mode) {
@@ -218,6 +256,10 @@
       return true;
     }
 
+    markShadowDirty() {
+      if (this.renderer.shadowMap.enabled) this.renderer.shadowMap.needsUpdate = true;
+    }
+
     resetCamera() {
       this.camera.position.set(2.05, 1.55, 2.35);
       this.controls.target.set(0, 0.52, 0);
@@ -265,6 +307,7 @@
     }
 
     dispose() {
+      if (this._interactionTimer) { clearTimeout(this._interactionTimer); this._interactionTimer = null; }
       const canvas = this.renderer && this.renderer.domElement;
       if (canvas && this._onContextLost) canvas.removeEventListener('webglcontextlost', this._onContextLost);
       if (canvas && this._onContextRestored) canvas.removeEventListener('webglcontextrestored', this._onContextRestored);
