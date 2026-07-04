@@ -49,9 +49,11 @@
         preserveDrawingBuffer: false,
         powerPreference: 'high-performance',
       });
-      this.renderer.setPixelRatio(this._effectiveDpr());
+      // Start at low DPR for instant first frame; ramp up after mount
+      this._ramped = false;
+      this.renderer.setPixelRatio(this.profile.dpr);
       this.renderer.setSize(w, h, false);
-      this.renderer.shadowMap.enabled = !this.profile.low;
+      this.renderer.shadowMap.enabled = !this.profile.low && this.profile.shadowMapSize > 0;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       // Static-shadow pattern: three.js recomputes the ENTIRE shadow pass
       // on every render() call by default (autoUpdate=true), even when only
@@ -145,6 +147,20 @@
       }, 120);
     }
 
+    /** Ramp DPR to final quality after first frame renders. Called once. */
+    rampUpQuality() {
+      if (this._ramped || !this.renderer || this._qualityMode !== 'auto') return;
+      this._ramped = true;
+      const finalDpr = this.profile.dprFinal || this.profile.dpr;
+      if (Math.abs(this.renderer.getPixelRatio() - finalDpr) < 0.01) return;
+      // Delay the ramp so the user sees the first frame instantly
+      setTimeout(() => {
+        if (!this.renderer) return;
+        this.renderer.setPixelRatio(finalDpr);
+        this.hooks.invalidate && this.hooks.invalidate('quality-ramp');
+      }, 600);
+    }
+
     setQuality(mode) {
       this._qualityMode = mode || 'auto';
       this._qualityScale = 1;
@@ -166,8 +182,9 @@
 
       const key = new THREE.DirectionalLight(0xffd9a8, this.profile.low ? 1.15 : 1.3);
       key.position.set(4, 8, 4);
-      key.castShadow = true;
-      key.shadow.mapSize.set(this.profile.shadowMapSize, this.profile.shadowMapSize);
+      key.castShadow = this.renderer.shadowMap.enabled;
+      const smSize = Math.max(256, this.profile.shadowMapSize || 512);
+      key.shadow.mapSize.set(smSize, smSize);
       const s = key.shadow.camera;
       s.near = 0.5; s.far = 13; s.left = -2.2; s.right = 2.2; s.top = 2.2; s.bottom = -2.2;
       key.shadow.bias = -0.00045;

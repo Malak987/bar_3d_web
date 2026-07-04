@@ -106,15 +106,12 @@ class CakeCanvasViewState extends State<CakeCanvasView> {
       _loadingMessage = 'جاري تحميل محرك العرض...';
     });
 
-    // Wait up to 10s for the JS bridge to be ready.
-    for (int i = 0; i < 100; i++) {
-      if (!mounted) {
-        _isMounting = false;
-        return;
-      }
+    // Fast poll: wait up to 5s (50 × 100ms) for the JS bridge.
+    for (int i = 0; i < 50; i++) {
+      if (!mounted) { _isMounting = false; return; }
       if (CakeDesignerJs.isReady) break;
-      if (i % 8 == 0 && mounted) {
-        setState(() => _loadProgress = (0.08 + i / 180).clamp(0.08, 0.62).toDouble());
+      if (i % 5 == 0 && mounted) {
+        setState(() => _loadProgress = (0.08 + i / 80).clamp(0.08, 0.62).toDouble());
       }
       await Future.delayed(const Duration(milliseconds: 100));
     }
@@ -129,22 +126,18 @@ class CakeCanvasViewState extends State<CakeCanvasView> {
       return;
     }
 
-    setState(() {
-      _loadProgress = 0.72;
-      _loadingMessage = 'جاري بناء التصميم...';
-    });
-    await Future.delayed(const Duration(milliseconds: 120));
-    if (!mounted) {
-      _isMounting = false;
-      return;
+    if (mounted) {
+      setState(() {
+        _loadProgress = 0.72;
+        _loadingMessage = 'جاري بناء التصميم...';
+      });
     }
+    // Minimal delay so the loading UI paints before heavy mount work
+    await Future.delayed(const Duration(milliseconds: 40));
+    if (!mounted) { _isMounting = false; return; }
 
     CakeDesignerJs.mount(_containerId, widget.config);
     if (mounted) {
-      // Do not keep an overlay above the WebGL canvas after mount. Some mobile
-      // WebViews do not deliver same-window postMessage reliably, and an overlay
-      // can make the user think the 3D scene is not loaded while the canvas is
-      // already behind it.
       setState(() {
         _mounted = true;
         _loadProgress = 1;
@@ -192,11 +185,13 @@ class CakeCanvasViewState extends State<CakeCanvasView> {
         final fatal = code == 'mount-failed' ||
             code == 'container-not-found' ||
             code == 'apply-config-failed' ||
-            code == 'webgl-context-lost';
-        // Non-fatal renderer events such as glow-load-failed or quality-degraded
-        // must not cover the working canvas with an error overlay.
+            code == 'webgl-context-lost' ||
+            code == 'webgl-not-supported';
         if (fatal && !_mounted) {
-          setState(() => _mountError = 'حدث خطأ في المعاينة، يمكنك إعادة المحاولة');
+          final msg = code == 'webgl-not-supported' || code == 'webgl-context-lost'
+              ? 'جهازك لا يدعم العرض ثلاثي الأبعاد — جرّب متصفح أحدث أو جهاز آخر'
+              : 'حدث خطأ في المعاينة، يمكنك إعادة المحاولة';
+          setState(() => _mountError = msg);
         }
       }
     } catch (_) {}

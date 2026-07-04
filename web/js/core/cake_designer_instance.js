@@ -179,6 +179,13 @@
         const t0 = performance.now();
         this.scene.renderer.render(this.scene.scene, this.scene.camera);
         const renderMs = performance.now() - t0;
+
+        // After the very first render, ramp DPR to final quality
+        if (!this._firstFrameDone) {
+          this._firstFrameDone = true;
+          this.scene.rampUpQuality();
+        }
+
         if (!moving && renderMs > 45) this._slowFrames++;
         else this._slowFrames = Math.max(0, this._slowFrames - 1);
         if (this._slowFrames >= 15) {
@@ -242,9 +249,24 @@
       };
       this._config = next;
       // Cake shape/position changed — shadow needs a one-time recompute.
-      // Pure camera orbit/zoom does NOT go through _apply(), so those
-      // frames correctly skip the shadow pass entirely now.
       if (dirty.size) this.scene.markShadowDirty();
+
+      // Scene complexity cap — degrade quality if over budget
+      this._checkComplexityBudget();
+    }
+
+    _checkComplexityBudget() {
+      if (!this.scene || !this.scene.renderer) return;
+      const info = this.scene.renderer.info;
+      if (!info) return;
+      const profile = this.scene.profile;
+      const tris = info.render.triangles || 0;
+      const calls = info.render.calls || 0;
+      if (tris > (profile.maxTriangles || 200000) || calls > (profile.maxDrawCalls || 100)) {
+        this.scene.degradeQuality(
+          'complexity-over-budget: tris=' + tris + ' calls=' + calls
+        );
+      }
     }
 
     _clear(group) {

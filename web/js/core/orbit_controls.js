@@ -53,13 +53,17 @@
     const lastPos   = new THREE.Vector3();
     const EPS       = 1e-6;
 
-    this.update = function () {
+    this.update = function (dt) {
       offset.copy(camera.position).sub(scope.target);
       offset.applyQuaternion(quat);
       spherical.setFromVector3(offset);
 
       if (scope.autoRotate && state === STATE.NONE) {
-        sphericalDelta.theta -= (2 * Math.PI) / 60 / 60 * scope.autoRotateSpeed;
+        // dt-based (radians/sec) so the orbit speed stays consistent
+        // regardless of frame rate — a slow/janky frame just advances the
+        // angle by the correct real-time amount instead of stalling or
+        // (worse) ever appearing to "catch up" in a burst.
+        sphericalDelta.theta -= scope.autoRotateSpeed * (typeof dt === 'number' ? dt : 1 / 60);
       }
 
       if (scope.enableDamping) {

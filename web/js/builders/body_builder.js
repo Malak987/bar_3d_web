@@ -5,8 +5,9 @@
   const _tmp = new THREE.Color();
 
   function build(group, cfg, R, H, baseY, matPool) {
-    const radSegs = 64; // 100% matched to bar3dcake
-    const hSegs = 32;   // 100% matched to bar3dcake
+    const prof = (root.CD.Perf && root.CD.Perf.profile()) || {};
+    const radSegs = prof.bodyRadialSegs || 64;
+    const hSegs   = prof.bodyHeightSegs || 32;
     const geo = new THREE.CylinderGeometry(R, R, H, radSegs, hSegs, false);
     const pos = geo.attributes.position.array;
     const cnt = geo.attributes.position.count;
@@ -47,7 +48,8 @@
     const capMat = matPool
       ? matPool.physical('#' + topColor.getHexString(), { roughness: cfg.roughness, metalness: cfg.metalness, clearcoat: cfg.clearcoat, clearcoatRoughness: 0.2 })
       : new THREE.MeshPhysicalMaterial({ color: topColor, roughness: cfg.roughness, metalness: cfg.metalness, clearcoat: cfg.clearcoat });
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.005, radSegs), capMat);
+    const capSegs = prof.capRadialSegs || radSegs;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.005, capSegs), capMat);
     cap.position.y = baseY + H;
     cap.receiveShadow = true;
     cap.frustumCulled = false;

@@ -359,14 +359,15 @@ class _WizardResponsiveContent extends StatelessWidget {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
         final isDesktop = width >= 980;
-        final isTablet = width >= 680 && width < 980;
+        final isTablet = width >= 600 && width < 980;
+        final isLargeDesktop = width >= 1400;
 
         if (isDesktop) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                flex: 7,
+                flex: isLargeDesktop ? 8 : 7,
                 child: _CanvasPreview(
                   config: config,
                   controller: controller,
@@ -376,7 +377,10 @@ class _WizardResponsiveContent extends StatelessWidget {
                 ),
               ),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480, minWidth: 380),
+                constraints: BoxConstraints(
+                  maxWidth: isLargeDesktop ? 520 : 480,
+                  minWidth: 360,
+                ),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: AppColors.bg,
@@ -389,9 +393,25 @@ class _WizardResponsiveContent extends StatelessWidget {
           );
         }
 
-        final previewHeight = isTablet
-            ? (height * 0.34).clamp(210.0, 340.0).toDouble()
-            : (height < 500 ? 128.0 : (height * 0.30).clamp(150.0, 260.0).toDouble());
+        // ── Mobile & Tablet responsive canvas height ──
+        double previewHeight;
+        if (isTablet) {
+          // Tablet: 38-42% of height — bigger canvas
+          previewHeight = (height * 0.40).clamp(240.0, 400.0).toDouble();
+        } else {
+          // Mobile: scale with screen, bigger minimum
+          final screenH = MediaQuery.of(context).size.height;
+          if (screenH < 600) {
+            // Small phones
+            previewHeight = (height * 0.32).clamp(160.0, 220.0).toDouble();
+          } else if (screenH < 750) {
+            // Medium phones
+            previewHeight = (height * 0.36).clamp(200.0, 280.0).toDouble();
+          } else {
+            // Large phones
+            previewHeight = (height * 0.38).clamp(220.0, 320.0).toDouble();
+          }
+        }
 
         return Column(
           children: [
