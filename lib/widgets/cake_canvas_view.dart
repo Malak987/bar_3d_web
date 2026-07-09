@@ -145,6 +145,23 @@ class CakeCanvasViewState extends State<CakeCanvasView> {
       });
     }
     _isMounting = false;
+
+    // The platform view's true DOM size can settle a beat after Flutter's
+    // own layout does (see the forced-relayout note in cake_designer_page.dart).
+    // A couple of synthetic 'resize' events make the JS-side ResizeObserver /
+    // window listener in cake_designer_instance.js re-measure the container
+    // instead of waiting for the next real browser resize.
+    for (final delay in const [
+      Duration(milliseconds: 60),
+      Duration(milliseconds: 350),
+      Duration(milliseconds: 900),
+    ]) {
+      Future.delayed(delay, () {
+        try {
+          html.window.dispatchEvent(html.Event('resize'));
+        } catch (_) {}
+      });
+    }
   }
 
   void _handleHostMessage(html.MessageEvent event) {

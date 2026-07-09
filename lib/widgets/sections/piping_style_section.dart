@@ -35,6 +35,7 @@ class PipingStyleSection extends StatelessWidget {
                     pipingPlacement: 'border',
                     edgeTop: true,
                     edgeBottom: false,
+                    pipingColorCount: 1, // حافة القمة فقط = لون واحد إجباري
                   )),
                 ),
               ),
@@ -64,6 +65,8 @@ class PipingStyleSection extends StatelessWidget {
               pipingPlacement: 'edges',
               edgeTop: true,
               edgeBottom: true,
+              // القمة والقاع = لون واحد أو لونين بس (مش 3)
+              pipingColorCount: config.pipingColorCount.clamp(1, 2),
             )),
           ),
         ],

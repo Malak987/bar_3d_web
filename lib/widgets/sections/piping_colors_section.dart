@@ -24,17 +24,35 @@ class PipingColorsSection extends StatelessWidget {
 
   int _dataIndex(int uiIndex, int total) => total - 1 - uiIndex;
 
+  /// حافة القمة فقط → لون واحد إجباري
+  /// حافة القمة والسفلية → لون واحد أو لونين (فوق/تحت)
+  /// تغطية كاملة → لحد 3 ألوان زي المعتاد
+  int _maxColorsFor(String placement) {
+    switch (placement) {
+      case 'border':
+        return 1;
+      case 'edges':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final total = config.pipingColorCount;
+    final maxCount = _maxColorsFor(config.pipingPlacement);
+    final total = config.pipingColorCount.clamp(1, maxCount);
 
     return Section(
       number: 5,
       title: 'DECORATION COLORS',
       arabicTitle: 'ألوان التزيين',
       subtitle: 'نسق ألوان الكريمة مع الكيكة باحترافية',
-      trailing: CountSelector(
+      trailing: maxCount == 1
+          ? null // لون واحد إجباري — مفيش داعي للمحدد خالص
+          : CountSelector(
         count: total,
+        maxCount: maxCount,
         onChanged: (v) => onChanged(config.copyWith(pipingColorCount: v)),
       ),
       child: Column(
@@ -43,7 +61,6 @@ class PipingColorsSection extends StatelessWidget {
           final hex = dataIndex < config.pipingColors.length
               ? config.pipingColors[dataIndex]
               : '#ffffff';
-
           return Padding(
             padding: EdgeInsets.only(bottom: uiIndex < total - 1 ? 16 : 0),
             child: GroupedColorRow(

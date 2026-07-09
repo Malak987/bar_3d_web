@@ -5,17 +5,22 @@ import '../../core/app_colors.dart';
 class CountSelector extends StatelessWidget {
   final int count;
   final ValueChanged<int> onChanged;
+  /// Highest selectable value — options above this are hidden entirely
+  /// (used to restrict color count based on the chosen piping placement).
+  final int maxCount;
 
   const CountSelector({
     super.key,
     required this.count,
     required this.onChanged,
+    this.maxCount = 3,
   });
 
-  static const _options = [(1, '١'), (2, '٢'), (3, '٣')];
+  static const _allOptions = [(1, '١'), (2, '٢'), (3, '٣')];
 
   @override
   Widget build(BuildContext context) {
+    final options = _allOptions.where((o) => o.$1 <= maxCount).toList();
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -25,7 +30,7 @@ class CountSelector extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: _options.map((o) {
+        children: options.map((o) {
           return _CountBtn(
             value: o.$1,
             label: o.$2,
@@ -65,12 +70,12 @@ class _CountBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(9),
           boxShadow: selected
               ? [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.3),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ]
               : null,
         ),
         alignment: Alignment.center,

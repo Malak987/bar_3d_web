@@ -166,13 +166,10 @@
 
       let moving = false;
       if (this.scene.controls) {
-        this.scene.controls.autoRotate = false;
-        moving = !!this.scene.controls.update();
-      }
-      if (this.rootGroup && this.autoRotate) {
-        // Frame-rate independent: ~6 degrees/sec (smooth, gentle)
-        this.rootGroup.rotation.y += 0.105 * dt;
-        moving = true;
+        // Respect the autoRotate config flag — camera orbits the fixed
+        // cake instead of the cake object rotating in place.
+        this.scene.controls.autoRotate = this.autoRotate;
+        moving = !!this.scene.controls.update(dt);
       }
       if ((this._needsRender || moving) && !this.scene._contextLost) {
         this._needsRender = false;
@@ -193,7 +190,7 @@
           this.scene.degradeQuality('slow-render-' + Math.round(renderMs) + 'ms');
         }
       }
-      if (moving || this.autoRotate || this._needsRender) {
+      if (moving || this._needsRender) {
         this._animId = requestAnimationFrame(this._animate);
       }
     }

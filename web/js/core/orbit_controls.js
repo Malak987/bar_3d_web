@@ -149,17 +149,22 @@
     // ── Touch ────────────────────────────────────────────
 
     function onTouchStart(e) {
+      let engaged = false;
       if (e.touches.length === 1 && scope.enableRotate) {
         state = STATE.ROTATE;
         rotateStart.set(e.touches[0].pageX, e.touches[0].pageY);
+        engaged = true;
       } else if (e.touches.length === 2 && scope.enableZoom) {
         state = STATE.DOLLY;
         const dx = e.touches[0].pageX - e.touches[1].pageX;
         const dy = e.touches[0].pageY - e.touches[1].pageY;
         touchStartDist = Math.hypot(dx, dy);
+        engaged = true;
       }
-      scope.isInteracting = true;
-      if (typeof scope.onInteractionStart === 'function') scope.onInteractionStart();
+      if (engaged) {
+        scope.isInteracting = true;
+        if (typeof scope.onInteractionStart === 'function') scope.onInteractionStart();
+      }
     }
 
     function onTouchMove(e) {

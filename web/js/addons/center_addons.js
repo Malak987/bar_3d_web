@@ -343,6 +343,9 @@
   }
 
   // ── gift ribbon (single ribbon + bow on side) ────────────
+  // Every part here shares one material and this only gets built once
+  // (not repeated N times), so we just merge all 6 parts straight into a
+  // single mesh — 1 draw call instead of 6.
   function buildGiftRibbon(group, R, H, baseY, color) {
     const topY  = baseY + H;
     const midY  = baseY + H * 0.5;
@@ -354,7 +357,10 @@
       clearcoat: 1.0, clearcoatRoughness: 0.03,
     });
 
-    // horizontal ring
+    const AH = root.CD.AddonHelpers;
+    const parts = [];
+
+    // horizontal ring — already in world space via its own curve points
     const hPts = [];
     for (let i = 0; i <= segs; i++) {
       const a = (i / segs) * Math.PI * 2;
@@ -363,20 +369,18 @@
       ));
     }
     hPts.push(hPts[0].clone());
-    const ribbon = new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hPts, true),
-                              segs, w * 0.52, 12, true),
-      mat,
-    );
-    ribbon.castShadow = ribbon.receiveShadow = true;
-    group.add(ribbon);
+    parts.push({
+      geometry: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hPts, true), segs, w * 0.52, 12, true),
+      material: mat,
+      matrix: new THREE.Matrix4(),
+    });
 
-    // bow on front
+    // bow on front — bow-group sits at (0, midY, R + w*0.3); bake that
+    // offset directly into each part's world matrix.
     const bw = R * 0.07;
-    const g = new THREE.Group();
-    g.position.set(0, midY, R + w * 0.3);
+    const bowX = 0, bowY = midY, bowZ = R + w * 0.3;
 
-    const makeLoop = (side) => {
+    const makeLoopGeo = (side) => {
       const sh = new THREE.Shape();
       sh.moveTo(0, 0);
       sh.bezierCurveTo( side * w * 0.25,  w * 3.4,  side * w * 2.2,  w * 3.4,  side * w * 1.9, 0);
@@ -386,22 +390,31 @@
         bevelSize: bw * 0.07, bevelThickness: bw * 0.07, curveSegments: 20,
       });
       geo.center();
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(side * bw * 1.3, bw * 0.1, bw * 0.22);
-      m.rotation.z = side * 0.18;
-      m.castShadow = true;
-      return m;
+      return geo;
     };
-    g.add(makeLoop(1));
-    g.add(makeLoop(-1));
+    const dummy = new THREE.Object3D();
+    const bakedMatrix = (px, py, pz, rz, sx, sy, sz) => {
+      dummy.position.set(px, py, pz);
+      dummy.rotation.set(0, 0, rz || 0);
+      dummy.scale.set(sx == null ? 1 : sx, sy == null ? 1 : sy, sz == null ? 1 : sz);
+      dummy.updateMatrix();
+      return dummy.matrix.clone();
+    };
 
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(bw * 0.5, 16, 16), mat);
-    knot.scale.set(1.0, 0.82, 0.68);
-    knot.position.set(0, 0, bw * 0.26);
-    knot.castShadow = true;
-    g.add(knot);
+    parts.push({
+      geometry: makeLoopGeo(1), material: mat,
+      matrix: bakedMatrix(bowX + bw * 1.3, bowY + bw * 0.1, bowZ + bw * 0.22, 0.18),
+    });
+    parts.push({
+      geometry: makeLoopGeo(-1), material: mat,
+      matrix: bakedMatrix(bowX - bw * 1.3, bowY + bw * 0.1, bowZ + bw * 0.22, -0.18),
+    });
+    parts.push({
+      geometry: new THREE.SphereGeometry(bw * 0.5, 16, 16), material: mat,
+      matrix: bakedMatrix(bowX, bowY, bowZ + bw * 0.26, 0, 1.0, 0.82, 0.68),
+    });
 
-    const makeTail = (side) => {
+    const makeTailGeo = (side) => {
       const pts = [];
       for (let t = 0; t <= 14; t++) {
         const u = t / 14;
@@ -411,16 +424,13 @@
           bw * 0.15 - u * bw * 0.08,
         ));
       }
-      const m = new THREE.Mesh(
-        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, bw * 0.16, 8, false),
-        mat,
-      );
-      m.castShadow = true;
-      return m;
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, bw * 0.16, 8, false);
     };
-    g.add(makeTail(1));
-    g.add(makeTail(-1));
-    group.add(g);
+    parts.push({ geometry: makeTailGeo(1),  material: mat, matrix: bakedMatrix(bowX, bowY, bowZ) });
+    parts.push({ geometry: makeTailGeo(-1), material: mat, matrix: bakedMatrix(bowX, bowY, bowZ) });
+
+    const merged = AH.mergeParts(parts);
+    AH.placeInstances(group, merged, [new THREE.Matrix4()], true);
   }
 
   // ── secret message (envelope) ────────────────────────────
@@ -454,33 +464,33 @@
 
   // ── sparklers ────────────────────────────────────────────
   function buildSparklers(group, R, topY) {
+    const AH = root.CD.AddonHelpers;
     const wireMat = new THREE.MeshStandardMaterial({ color: 0xCCCCCC, metalness: 0.8 });
     const sparkMat = new THREE.MeshStandardMaterial({
       color: 0xFFFF00, emissive: 0xFFAA00, emissiveIntensity: 3,
     });
+    const wireGeo = new THREE.CylinderGeometry(R * 0.006, R * 0.006, R * 0.5, 6);
+    const sparkGeo = new THREE.SphereGeometry(R * 0.012, 6, 6);
+
+    const wireMatrices = [];
+    const sparkMatrices = [];
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
       const sx = Math.cos(a) * R * 0.35, sz = Math.sin(a) * R * 0.35;
-      const wire = new THREE.Mesh(
-        new THREE.CylinderGeometry(R * 0.006, R * 0.006, R * 0.5, 6),
-        wireMat,
-      );
-      wire.position.set(sx, topY + R * 0.25, sz);
-      wire.castShadow = true;
-      group.add(wire);
+      wireMatrices.push(new THREE.Matrix4().makeTranslation(sx, topY + R * 0.25, sz));
 
       for (let j = 0; j < 8; j++) {
-        const sp = new THREE.Mesh(new THREE.SphereGeometry(R * 0.012, 6, 6), sparkMat);
         const sa = Math.random() * Math.PI * 2;
         const sr = R * (0.02 + Math.random() * 0.06);
-        sp.position.set(
+        sparkMatrices.push(new THREE.Matrix4().makeTranslation(
           sx + Math.cos(sa) * sr,
           topY + R * (0.45 + Math.random() * 0.15),
           sz + Math.sin(sa) * sr,
-        );
-        group.add(sp);
+        ));
       }
     }
+    AH.instanceSimple(group, wireGeo, wireMat, wireMatrices, true);
+    AH.instanceSimple(group, sparkGeo, sparkMat, sparkMatrices, false);
   }
 
   root.CD = root.CD || {};

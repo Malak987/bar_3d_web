@@ -509,24 +509,53 @@ class ApiService {
     }
   }
 
-  static double calculateTotalPrice(CakeConfig config, {double baseProductPrice = 0}) {
-    var total = baseProductPrice;
+  /// Calculates the **total price entirely from database data**.
+  /// No hardcoded base price. All values come from the loaded API response.
+  static double calculateTotalPrice(CakeConfig config) {
+    var total = 0.0;
+
+    // Main size price (from DB - extraPrice of selected size)
     total += selectedSize(config)?.price ?? 0;
+
+    // Flavor extra price
     total += selectedFlavor(config)?.extraPrice ?? 0;
+
+    // Piping extra price
     total += selectedPiping(config)?.extraPrice ?? 0;
+
+    // Shape extra price
     total += ApiService.loadedShapes.isNotEmpty
         ? ((ApiService.loadedShapes.first['extraPrice'] as num?)?.toDouble() ?? 0)
         : 0;
+
+    // Body colors extra prices
     for (final hex in config.colors.take(config.gradientColorCount)) {
       total += colorByHex(hex)?.extraPrice ?? 0;
     }
+
+    // Piping colors extra prices
     for (final hex in config.pipingColors.take(config.pipingColorCount)) {
       total += colorByHex(hex)?.extraPrice ?? 0;
     }
+
+    // Addons / Toppings / Extras
     for (final id in config.selectedAddons) {
       total += addonById(id)?.extraPrice ?? 0;
     }
+
     return total;
+  }
+
+  /// Returns the cheapest available size as default
+  static CakeSizeOption? get cheapestSize {
+    if (cakeSizes.isEmpty) return null;
+    return cakeSizes.reduce((a, b) => a.price < b.price ? a : b);
+  }
+
+  /// Returns the cheapest available flavor as default
+  static BaseFlavor? get cheapestFlavor {
+    if (baseFlavors.isEmpty) return null;
+    return baseFlavors.reduce((a, b) => a.extraPrice < b.extraPrice ? a : b);
   }
 
   static CakeConfig normalizeConfig(CakeConfig current) {
@@ -534,15 +563,19 @@ class ApiService {
         ? paletteColors.take(3).map((c) => c.hex).toList()
         : List<String>.from(current.colors);
     while (colors.length < 3) { colors.add('#FFFFFF'); }
-    final size = cakeSizes.isNotEmpty ? cakeSizes.first : null;
+
+    // ✅ Use the CHEAPEST size and flavor as default (from database)
+    final defaultSize = cheapestSize;
+    final defaultFlavor = cheapestFlavor;
+
     return current.copyWith(
       colors: colors,
       pipingColors: colors,
       pipingColor: colors.isNotEmpty ? colors.first : '#FFFFFF',
-      baseFlavor: baseFlavors.isNotEmpty ? baseFlavors.first.id : current.baseFlavor,
+      baseFlavor: defaultFlavor?.id ?? current.baseFlavor,
       pipingType: pipingOptions.isNotEmpty ? pipingOptions.first.id : current.pipingType,
-      cakeRadius: size?.radius ?? current.cakeRadius,
-      cakeHeight: size?.height ?? current.cakeHeight,
+      cakeRadius: defaultSize?.radius ?? current.cakeRadius,
+      cakeHeight: defaultSize?.height ?? current.cakeHeight,
       selectedAddons: const [],
       addonColors: const {},
     );

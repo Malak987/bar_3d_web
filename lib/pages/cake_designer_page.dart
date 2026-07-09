@@ -15,9 +15,9 @@ import '../widgets/layout/cake_customization_wizard.dart';
 /// 🎂 Cake Designer Page — Pure designer UI
 ///
 /// This widget is ONLY rendered after:
-///   1. AuthGuard.ensureAuthenticated() has succeeded
-///   2. ApiService.loadCustomization() has completed
-///   3. CakeConfig has been pre-loaded
+/// 1. AuthGuard.ensureAuthenticated() has succeeded
+/// 2. ApiService.loadCustomization() has completed
+/// 3. CakeConfig has been pre-loaded
 ///
 /// The AuthGate layer handles ALL authentication and initialization.
 /// This page focuses solely on the design experience.
@@ -25,17 +25,17 @@ import '../widgets/layout/cake_customization_wizard.dart';
 /// Phase 5: The ONLY supported completion flow is CAKE_DESIGN_COMPLETED.
 ///
 /// bar_3d_web owns:
-///   • 3D rendering and scene management
-///   • Cake customization UI and wizard
-///   • Design state management
-///   • Preview image generation
-///   • Image upload to backend
-///   • Exporting final design payload
+/// • 3D rendering and scene management
+/// • Cake customization UI and wizard
+/// • Design state management
+/// • Preview image generation
+/// • Image upload to backend
+/// • Exporting final design payload
 ///
 /// bar_web owns:
-///   • AddToCart API call
-///   • Cart state and persistence
-///   • Checkout, orders, payment
+/// • AddToCart API call
+/// • Cart state and persistence
+/// • Checkout, orders, payment
 ///
 /// The designer does NOT call AddToCart API. It sends CAKE_DESIGN_COMPLETED
 /// and waits for Flutter to handle commerce operations.
@@ -204,14 +204,14 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
   // ── Add To Cart Flow ─────────────────────────────────────────────────
   //
   // Phase 5: The ONLY supported flow.
-  //   1. Validate design
-  //   2. Validate session
-  //   3. Capture final design image
-  //   4. Upload images to backend
-  //   5. Build CAKE_DESIGN_COMPLETED payload
-  //   6. Send payload to Flutter via bridge
-  //   7. Wait for Flutter to call AddToCart API
-  //   8. Show success/failure feedback
+  // 1. Validate design
+  // 2. Validate session
+  // 3. Capture final design image
+  // 4. Upload images to backend
+  // 5. Build CAKE_DESIGN_COMPLETED payload
+  // 6. Send payload to Flutter via bridge
+  // 7. Wait for Flutter to call AddToCart API
+  // 8. Show success/failure feedback
 
   Future<Map<String, dynamic>?> _addToCart() async {
     if (_adding) return null;
@@ -323,6 +323,11 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
   // This payload contains the complete design configuration.
   // Flutter receives it and calls AddToCart API.
   // Backend is authoritative for all pricing and validation.
+  //
+  // ✅ FIXED: basePrice is now 0 to avoid double-counting the size price.
+  // The size price is correctly included in sizeExtraPrice only.
+  // This ensures the total price sent to the backend matches what
+  // calculateTotalPrice() computes on the 3D website.
 
   Map<String, dynamic> _buildDesignCompletionPayload({
     required String designId,
@@ -370,7 +375,7 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
     }
 
     // ── Build topping selections ────────────────────────────
-    final toppingSelections = <Map<String, dynamic>>[];
+    final toppingSelections = <Map<String, String>>[];
     for (final id in _config.selectedAddons) {
       if (id.isEmpty) continue;
       if (ApiService.isExtraId(id)) continue; // extras go in extraIds
@@ -394,6 +399,16 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
     }
 
     // ── Build design config map ─────────────────────────────
+    //
+    // ✅ FIX: basePrice = 0 (not the size price!)
+    // Previously, basePrice was set to selectedSizeBasePrice() which returns
+    // the SAME value as selectedSize()?.price (used in sizeExtraPrice).
+    // This caused the size price to be counted TWICE by the backend:
+    //   backend_total = basePrice + sizeExtraPrice + flavorExtra + ...
+    //   = sizePrice + sizePrice + extras (WRONG!)
+    //
+    // Now: basePrice = 0, sizeExtraPrice = size.price (counted once)
+    //   backend_total = 0 + sizePrice + extras (CORRECT!)
     final designConfig = {
       'sizeId': sizeId,
       'shapeId': shapeId,
@@ -410,8 +425,8 @@ class _CakeDesignerPageState extends State<CakeDesignerPage> {
       // Image URLs (already uploaded by designer)
       'designImageUrl': uploadedImages.designImageUrl,
       'photoUrl': uploadedImages.photoUrl.isNotEmpty ? uploadedImages.photoUrl : null,
-      // Pricing breakdown (for Flutter's reference — backend is authoritative)
-      'basePrice': ApiService.selectedSizeBasePrice(_config).toDouble(),
+      // ✅ Pricing breakdown — FIXED to avoid double-counting
+      'basePrice': 0.0, // ← FIXED: was selectedSizeBasePrice(_config) which duplicated size price
       'sizeExtraPrice': ApiService.selectedSize(_config)?.price ?? 0,
       'flavorExtraPrice': ApiService.selectedFlavor(_config)?.extraPrice ?? 0,
       'pipingExtraPrice': ApiService.selectedPiping(_config)?.extraPrice ?? 0,
@@ -711,7 +726,7 @@ class _FallbackCartPage extends StatelessWidget {
               onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal),
               child: const Text(
-                'العودة للرئيسية',
+                'العودة للرئيسسية',
                 style: TextStyle(color: Colors.white),
               ),
             ),

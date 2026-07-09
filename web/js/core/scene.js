@@ -49,9 +49,14 @@
         preserveDrawingBuffer: false,
         powerPreference: 'high-performance',
       });
-      // Start at low DPR for instant first frame; ramp up after mount
+      // Start at low DPR for instant first frame; ramp up after mount.
+      // _baseDpr is the single source of truth for "current target DPR" —
+      // both the boot value and the post-ramp value flow through it, so
+      // beginInteraction/endInteraction/degradeQuality never fall back to
+      // the low boot DPR once we've ramped up to full quality.
       this._ramped = false;
-      this.renderer.setPixelRatio(this.profile.dpr);
+      this._baseDpr = this.profile.dpr;
+      this.renderer.setPixelRatio(this._baseDpr);
       this.renderer.setSize(w, h, false);
       this.renderer.shadowMap.enabled = !this.profile.low && this.profile.shadowMapSize > 0;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -98,23 +103,61 @@
 
       this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
       this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.08;
-      this.controls.rotateSpeed   = 0.35;
+      this.controls.dampingFactor = 0.1;
+      this.controls.rotateSpeed   = 0.42;
       this.controls.zoomSpeed     = 0.85;
+      this.controls.enableRotate  = false;   // fixed camera — no manual drag
+      this.controls.enableZoom    = true;    // pinch/scroll zoom still works
       this.controls.enablePan     = false;
       this.controls.minDistance   = 1.05;
       this.controls.maxDistance   = 5.6;
       this.controls.minPolarAngle = 0.15;
       this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
+      // Camera orbits the (stationary) cake instead of the cake spinning in
+      // place — visually identical, but keeps the cake+light relationship
+      // static so markShadowDirty() still only fires on real geometry
+      // changes, not every frame.
+      this.controls.autoRotate      = false; // toggled per-frame from config, see cake_designer_instance.js
+      this.controls.autoRotateSpeed = 0.105;  // rad/sec — ~6°/sec, gentle
       this.controls.target.set(0, 0.52, 0);
       this.controls.onChange = () => this.hooks.invalidate && this.hooks.invalidate('controls');
       this.controls.onInteractionStart = () => this.beginInteraction();
       this.controls.onInteractionEnd = () => this.endInteraction();
       this.controls.update();
+      // Base distance the camera/framing was tuned at (today's mobile look).
+      this._baseCamDist = this.camera.position.distanceTo(this.controls.target);
+      this._applyAspectFraming();
+    }
+
+    /**
+     * A fixed vertical FOV means a very wide desktop viewport reveals a lot
+     * of extra HORIZONTAL frustum that mobile never showed — the cake ends
+     * up looking small with large empty margins on both sides (it's not
+     * cropped, the camera is just needlessly zoomed out for that aspect).
+     * This pulls the camera closer along its current viewing direction as
+     * the aspect ratio gets wider than the reference (mobile-portrait)
+     * tuning, capped so it never crops the cake — same framing on mobile,
+     * a tighter/better-filled frame on wide desktop.
+     */
+    _applyAspectFraming() {
+      if (!this.camera || !this.controls || !this._baseCamDist) return;
+      const aspect = this.camera.aspect || 1;
+      const refAspect = 0.68;   // ≈ today's mobile-portrait framing, unchanged below this
+      const wideAspect = 2.4;   // typical ultra-wide desktop window
+      const minScale = 0.62;    // never zoom in closer than 62% of the base distance
+
+      const t = Math.max(0, Math.min(1, (aspect - refAspect) / (wideAspect - refAspect)));
+      const scale = 1 - t * (1 - minScale);
+
+      const dir = this.camera.position.clone().sub(this.controls.target);
+      const len = dir.length() || 1;
+      dir.multiplyScalar(1 / len); // normalize
+      this.camera.position.copy(this.controls.target).addScaledVector(dir, this._baseCamDist * scale);
+      this.controls.update();
     }
 
     _effectiveDpr() {
-      const base = this.profile.dpr || 1;
+      const base = this._baseDpr || this.profile.dpr || 1;
       let dpr;
       if (this._qualityMode === 'low') dpr = Math.min(base, 1.0);
       else if (this._qualityMode === 'medium') dpr = Math.min(base, 1.35);
@@ -152,11 +195,12 @@
       if (this._ramped || !this.renderer || this._qualityMode !== 'auto') return;
       this._ramped = true;
       const finalDpr = this.profile.dprFinal || this.profile.dpr;
-      if (Math.abs(this.renderer.getPixelRatio() - finalDpr) < 0.01) return;
+      if (Math.abs(this._baseDpr - finalDpr) < 0.01) return;
       // Delay the ramp so the user sees the first frame instantly
       setTimeout(() => {
         if (!this.renderer) return;
-        this.renderer.setPixelRatio(finalDpr);
+        this._baseDpr = finalDpr;
+        this.renderer.setPixelRatio(this._effectiveDpr());
         this.hooks.invalidate && this.hooks.invalidate('quality-ramp');
       }, 600);
     }
@@ -269,6 +313,7 @@
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h, false);
+      this._applyAspectFraming();
       if (this.controls) this.controls.update();
       return true;
     }
@@ -280,6 +325,7 @@
     resetCamera() {
       this.camera.position.set(2.05, 1.55, 2.35);
       this.controls.target.set(0, 0.52, 0);
+      this._applyAspectFraming();
       this.controls.update();
       this.hooks.invalidate && this.hooks.invalidate('reset-camera');
     }

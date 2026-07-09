@@ -1,10 +1,32 @@
 /**
  * ─────────────────────────────────────────────────────────────
  * edge_addons.js — flowers, butterflies, fruits, hearts, bow
+ *
+ * Every "N copies of the same decoration around the edge" case now
+ * builds ONE item's local-space parts once, merges same-material
+ * parts into a single geometry, then repeats that with InstancedMesh
+ * across all N placements. Same look, a fraction of the draw calls
+ * (e.g. 8 flowers × 7 parts = 56 meshes before → 2 draw calls now).
  * ─────────────────────────────────────────────────────────────
  */
 (function (root) {
   'use strict';
+
+  const AH = root.CD.AddonHelpers;
+  const _dummy = new THREE.Object3D();
+
+  /** Build a local-space THREE.Matrix4 via the usual position/rotation/scale dance. */
+  function localMatrix(px, py, pz, rx, ry, rz, sx, sy, sz) {
+    _dummy.position.set(px || 0, py || 0, pz || 0);
+    _dummy.rotation.set(rx || 0, ry || 0, rz || 0);
+    _dummy.scale.set(sx == null ? 1 : sx, sy == null ? 1 : sy, sz == null ? 1 : sz);
+    _dummy.updateMatrix();
+    return _dummy.matrix.clone();
+  }
+
+  function worldMatrix(px, py, pz, ry) {
+    return localMatrix(px, py, pz, 0, ry || 0, 0);
+  }
 
   // ── natural flowers ──────────────────────────────────────
   function buildNaturalFlowers(group, R, topY, color, startA, arc) {
@@ -13,22 +35,29 @@
       color: new THREE.Color(color), roughness: 0.3, clearcoat: 0.4,
     });
     const coreMat = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+    const pivotY = topY + R * 0.06;
+
+    const parts = [];
+    for (let p = 0; p < 6; p++) {
+      const pa = (p / 6) * Math.PI * 2;
+      parts.push({
+        geometry: new THREE.SphereGeometry(R * 0.055, 10, 10),
+        material: petalMat,
+        matrix: localMatrix(Math.cos(pa) * R * 0.06, 0, Math.sin(pa) * R * 0.06, 0, 0, 0, 1.5, 0.35, 1.2),
+      });
+    }
+    parts.push({
+      geometry: new THREE.SphereGeometry(R * 0.03, 10, 10),
+      material: coreMat,
+      matrix: localMatrix(0, R * 0.01, 0),
+    });
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a = startA + (i + 0.5) / count * arc;
-      const fx = Math.cos(a) * R * 0.75;
-      const fz = Math.sin(a) * R * 0.75;
-      for (let p = 0; p < 6; p++) {
-        const pa = (p / 6) * Math.PI * 2;
-        const petal = new THREE.Mesh(new THREE.SphereGeometry(R * 0.055, 10, 10), petalMat);
-        petal.scale.set(1.5, 0.35, 1.2);
-        petal.position.set(fx + Math.cos(pa) * R * 0.06, topY + R * 0.06,
-                           fz + Math.sin(pa) * R * 0.06);
-        group.add(petal);
-      }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(R * 0.03, 10, 10), coreMat);
-      core.position.set(fx, topY + R * 0.07, fz);
-      group.add(core);
+      placements.push(worldMatrix(Math.cos(a) * R * 0.75, pivotY, Math.sin(a) * R * 0.75));
     }
+    AH.placeInstances(group, AH.mergeParts(parts), placements, true);
   }
 
   // ── artificial flowers ───────────────────────────────────
@@ -38,22 +67,29 @@
       color: new THREE.Color(color), roughness: 0.25, clearcoat: 0.6,
     });
     const coreMat = new THREE.MeshStandardMaterial({ color: 0xFFEE58 });
+    const pivotY = topY + R * 0.045;
+
+    const parts = [];
+    for (let p = 0; p < 5; p++) {
+      const pa = (p / 5) * Math.PI * 2;
+      parts.push({
+        geometry: new THREE.SphereGeometry(R * 0.048, 10, 10),
+        material: petalMat,
+        matrix: localMatrix(Math.cos(pa) * R * 0.055, 0, Math.sin(pa) * R * 0.055, 0, 0, 0, 1.8, 0.25, 1.3),
+      });
+    }
+    parts.push({
+      geometry: new THREE.SphereGeometry(R * 0.022, 8, 8),
+      material: coreMat,
+      matrix: localMatrix(0, R * 0.01, 0),
+    });
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a = startA + (i + 0.5) / count * arc;
-      const fx = Math.cos(a) * R * 0.7;
-      const fz = Math.sin(a) * R * 0.7;
-      for (let p = 0; p < 5; p++) {
-        const pa = (p / 5) * Math.PI * 2;
-        const petal = new THREE.Mesh(new THREE.SphereGeometry(R * 0.048, 10, 10), petalMat);
-        petal.scale.set(1.8, 0.25, 1.3);
-        petal.position.set(fx + Math.cos(pa) * R * 0.055, topY + R * 0.045,
-                           fz + Math.sin(pa) * R * 0.055);
-        group.add(petal);
-      }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(R * 0.022, 8, 8), coreMat);
-      core.position.set(fx, topY + R * 0.055, fz);
-      group.add(core);
+      placements.push(worldMatrix(Math.cos(a) * R * 0.7, pivotY, Math.sin(a) * R * 0.7));
     }
+    AH.placeInstances(group, AH.mergeParts(parts), placements, true);
   }
 
   // ── baby flowers ─────────────────────────────────────────
@@ -63,22 +99,29 @@
       color: new THREE.Color(color), roughness: 0.3, clearcoat: 0.5,
     });
     const coreMat = new THREE.MeshStandardMaterial({ color: 0xFFE0B2 });
+    const pivotY = topY + R * 0.035;
+
+    const parts = [];
+    for (let p = 0; p < 5; p++) {
+      const pa = (p / 5) * Math.PI * 2;
+      parts.push({
+        geometry: new THREE.SphereGeometry(R * 0.03, 8, 8),
+        material: petalMat,
+        matrix: localMatrix(Math.cos(pa) * R * 0.03, 0, Math.sin(pa) * R * 0.03, 0, 0, 0, 1.3, 0.3, 1.1),
+      });
+    }
+    parts.push({
+      geometry: new THREE.SphereGeometry(R * 0.015, 8, 8),
+      material: coreMat,
+      matrix: localMatrix(0, R * 0.005, 0),
+    });
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a = startA + (i + 0.5) / count * arc;
-      const fx = Math.cos(a) * R * 0.7;
-      const fz = Math.sin(a) * R * 0.7;
-      for (let p = 0; p < 5; p++) {
-        const pa = (p / 5) * Math.PI * 2;
-        const petal = new THREE.Mesh(new THREE.SphereGeometry(R * 0.03, 8, 8), petalMat);
-        petal.scale.set(1.3, 0.3, 1.1);
-        petal.position.set(fx + Math.cos(pa) * R * 0.03, topY + R * 0.035,
-                           fz + Math.sin(pa) * R * 0.03);
-        group.add(petal);
-      }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(R * 0.015, 8, 8), coreMat);
-      core.position.set(fx, topY + R * 0.04, fz);
-      group.add(core);
+      placements.push(worldMatrix(Math.cos(a) * R * 0.7, pivotY, Math.sin(a) * R * 0.7));
     }
+    AH.placeInstances(group, AH.mergeParts(parts), placements, true);
   }
 
   // ── butterflies ──────────────────────────────────────────
@@ -91,75 +134,79 @@
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1A1A1A });
     const spotMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
 
+    // Build ONE butterfly's parts (in its own local frame — same coordinates
+    // the original code used as children of the per-butterfly group).
+    const parts = [];
+    parts.push({
+      geometry: new THREE.CapsuleGeometry(R * 0.012, R * 0.07, 4, 8),
+      material: bodyMat,
+      matrix: localMatrix(0, 0, 0, 0, 0, Math.PI * 0.1),
+    });
+    parts.push({
+      geometry: new THREE.SphereGeometry(R * 0.016, 8, 8),
+      material: bodyMat,
+      matrix: localMatrix(0, R * 0.05, 0),
+    });
+    for (let s = -1; s <= 1; s += 2) {
+      parts.push({
+        geometry: new THREE.CylinderGeometry(R * 0.003, R * 0.003, R * 0.04, 4),
+        material: bodyMat,
+        matrix: localMatrix(s * R * 0.012, R * 0.08, 0, 0, 0, s * 0.5),
+      });
+      parts.push({
+        geometry: new THREE.SphereGeometry(R * 0.005, 6, 6),
+        material: bodyMat,
+        matrix: localMatrix(s * R * 0.025, R * 0.1, 0),
+      });
+    }
+
+    const ws = R * 0.14;
+    const upperShape = new THREE.Shape();
+    upperShape.moveTo(0, 0);
+    upperShape.bezierCurveTo(ws * 0.5, ws * 0.3, ws * 1.1, ws * 0.6, ws * 0.8, ws);
+    upperShape.bezierCurveTo(ws * 0.5, ws * 1.2, ws * 0.1, ws * 0.8, 0, ws * 0.5);
+    upperShape.bezierCurveTo(-ws * 0.1, ws * 0.8, -ws * 0.5, ws * 1.2, -ws * 0.8, ws);
+    upperShape.bezierCurveTo(-ws * 1.1, ws * 0.6, -ws * 0.5, ws * 0.3, 0, 0);
+    const upperGeo = new THREE.ShapeGeometry(upperShape);
+
+    const ls = R * 0.09;
+    const lowerShape = new THREE.Shape();
+    lowerShape.moveTo(0, 0);
+    lowerShape.bezierCurveTo(ls * 0.6, -ls * 0.2, ls * 0.9, -ls * 0.6, ls * 0.5, -ls * 0.8);
+    lowerShape.bezierCurveTo(ls * 0.2, -ls * 0.7, 0, -ls * 0.3, 0, 0);
+    const lowerGeo = new THREE.ShapeGeometry(lowerShape);
+
+    for (let side = -1; side <= 1; side += 2) {
+      parts.push({
+        geometry: upperGeo, material: wingMat,
+        matrix: localMatrix(side * R * 0.015, R * 0.02, -R * 0.01, 0, side * 0.15, 0),
+      });
+      parts.push({
+        geometry: new THREE.CircleGeometry(R * 0.015, 8), material: spotMat,
+        matrix: localMatrix(side * R * 0.06, R * 0.06, side * R * 0.005),
+      });
+      parts.push({
+        geometry: lowerGeo, material: wingMat,
+        matrix: localMatrix(side * R * 0.012, -R * 0.02, -R * 0.01, 0, side * 0.15, 0),
+      });
+    }
+
+    const merged = AH.mergeParts(parts);
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a = startA + (i + 0.5) / count * arc;
-      const bx = Math.cos(a) * R * 0.7;
-      const bz = Math.sin(a) * R * 0.7;
-      const g = new THREE.Group();
-      g.position.set(bx, topY + R * 0.22, bz);
-      g.rotation.y = -a + Math.PI * 0.5;
-
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.012, R * 0.07, 4, 8), bodyMat);
-      body.rotation.z = Math.PI * 0.1;
-      g.add(body);
-
-      const head = new THREE.Mesh(new THREE.SphereGeometry(R * 0.016, 8, 8), bodyMat);
-      head.position.set(0, R * 0.05, 0);
-      g.add(head);
-
-      for (let s = -1; s <= 1; s += 2) {
-        const ant = new THREE.Mesh(
-          new THREE.CylinderGeometry(R * 0.003, R * 0.003, R * 0.04, 4),
-          bodyMat,
-        );
-        ant.position.set(s * R * 0.012, R * 0.08, 0);
-        ant.rotation.z = s * 0.5;
-        g.add(ant);
-        const tip = new THREE.Mesh(new THREE.SphereGeometry(R * 0.005, 6, 6), bodyMat);
-        tip.position.set(s * R * 0.025, R * 0.1, 0);
-        g.add(tip);
-      }
-
-      // upper wings
-      const upperShape = new THREE.Shape();
-      const ws = R * 0.14;
-      upperShape.moveTo(0, 0);
-      upperShape.bezierCurveTo(ws * 0.5, ws * 0.3, ws * 1.1, ws * 0.6, ws * 0.8, ws);
-      upperShape.bezierCurveTo(ws * 0.5, ws * 1.2, ws * 0.1, ws * 0.8, 0, ws * 0.5);
-      upperShape.bezierCurveTo(-ws * 0.1, ws * 0.8, -ws * 0.5, ws * 1.2, -ws * 0.8, ws);
-      upperShape.bezierCurveTo(-ws * 1.1, ws * 0.6, -ws * 0.5, ws * 0.3, 0, 0);
-      const upperGeo = new THREE.ShapeGeometry(upperShape);
-
-      for (let side = -1; side <= 1; side += 2) {
-        const uw = new THREE.Mesh(upperGeo, wingMat);
-        uw.position.set(side * R * 0.015, R * 0.02, -R * 0.01);
-        uw.rotation.y = side * 0.15;
-        g.add(uw);
-        const spot = new THREE.Mesh(new THREE.CircleGeometry(R * 0.015, 8), spotMat);
-        spot.position.set(side * R * 0.06, R * 0.06, side * R * 0.005);
-        g.add(spot);
-      }
-
-      // lower wings
-      const lowerShape = new THREE.Shape();
-      const ls = R * 0.09;
-      lowerShape.moveTo(0, 0);
-      lowerShape.bezierCurveTo(ls * 0.6, -ls * 0.2, ls * 0.9, -ls * 0.6, ls * 0.5, -ls * 0.8);
-      lowerShape.bezierCurveTo(ls * 0.2, -ls * 0.7, 0, -ls * 0.3, 0, 0);
-      const lowerGeo = new THREE.ShapeGeometry(lowerShape);
-
-      for (let side = -1; side <= 1; side += 2) {
-        const lw = new THREE.Mesh(lowerGeo, wingMat);
-        lw.position.set(side * R * 0.012, -R * 0.02, -R * 0.01);
-        lw.rotation.y = side * 0.15;
-        g.add(lw);
-      }
-
-      group.add(g);
+      placements.push(worldMatrix(
+        Math.cos(a) * R * 0.7, topY + R * 0.22, Math.sin(a) * R * 0.7,
+        -a + Math.PI * 0.5,
+      ));
     }
+    AH.placeInstances(group, merged, placements, false);
   }
 
   // ── fruits (mix of strawberry/blueberry/raspberry) ───────
+  // Only 4 total by design — already cheap, left as individual meshes for
+  // simplicity (merging 3 different fruit shapes buys nothing meaningful).
   function buildFruits(group, R, topY, startA, arc) {
     const items = [
       { offset: 0.15, type: 'strawberry' },
@@ -214,24 +261,25 @@
     const mat = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(color), roughness: 0.25, clearcoat: 0.7,
     });
+
+    // All 3 parts share one material — merge them into a single heart
+    // shape, then instance that shape N times.
+    const parts = [
+      { geometry: new THREE.SphereGeometry(R * 0.03, 10, 10), material: mat,
+        matrix: localMatrix(-R * 0.018, 0, 0) },
+      { geometry: new THREE.SphereGeometry(R * 0.03, 10, 10), material: mat,
+        matrix: localMatrix(R * 0.018, 0, 0) },
+      { geometry: new THREE.ConeGeometry(R * 0.042, R * 0.05, 10), material: mat,
+        matrix: localMatrix(0, -R * 0.03, 0, 0, 0, Math.PI) },
+    ];
+    const merged = AH.mergeParts(parts);
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a = startA + (i + 0.5) / count * arc;
-      const hx = Math.cos(a) * R * 0.7;
-      const hz = Math.sin(a) * R * 0.7;
-
-      const left  = new THREE.Mesh(new THREE.SphereGeometry(R * 0.03, 10, 10), mat);
-      left.position.set(hx - R * 0.018, topY + R * 0.04, hz);
-      group.add(left);
-
-      const right = new THREE.Mesh(new THREE.SphereGeometry(R * 0.03, 10, 10), mat);
-      right.position.set(hx + R * 0.018, topY + R * 0.04, hz);
-      group.add(right);
-
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(R * 0.042, R * 0.05, 10), mat);
-      tip.position.set(hx, topY + R * 0.01, hz);
-      tip.rotation.z = Math.PI;
-      group.add(tip);
+      placements.push(worldMatrix(Math.cos(a) * R * 0.7, topY + R * 0.04, Math.sin(a) * R * 0.7));
     }
+    AH.placeInstances(group, merged, placements, false);
   }
 
   // ── 4 small bows on the rim ──────────────────────────────
@@ -242,63 +290,57 @@
       color: new THREE.Color(color), roughness: 0.15, metalness: 0.08,
       clearcoat: 1.0, clearcoatRoughness: 0.04,
     });
+    const w = R * 0.06;
 
+    const makeLoopGeo = (side) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(0, 0);
+      sh.bezierCurveTo( side * w * 0.25,  w * 3.4, side * w * 2.2,  w * 3.4, side * w * 1.9, 0);
+      sh.bezierCurveTo( side * w * 2.2, -w * 0.9, side * w * 0.25, -w * 0.9, 0, 0);
+      const geo = new THREE.ExtrudeGeometry(sh, {
+        depth: w * 0.45, bevelEnabled: true,
+        bevelSize: w * 0.07, bevelThickness: w * 0.07, curveSegments: 20,
+      });
+      geo.center();
+      return geo;
+    };
+
+    const makeTailGeo = (side) => {
+      const pts = [];
+      for (let t = 0; t <= 14; t++) {
+        const u = t / 14;
+        pts.push(new THREE.Vector3(
+          side * (w * 0.3 + u * w * 0.38),
+          -u * H * 0.48,
+          w * 0.18 - u * w * 0.1,
+        ));
+      }
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 18, w * 0.21, 8, false);
+    };
+
+    // All parts of one bow share the same material — merge into one shape,
+    // then instance that shape around the rim.
+    const parts = [
+      { geometry: makeLoopGeo(1),  material: mat,
+        matrix: localMatrix(w * 1.0, w * 0.15, w * 0.22, 0, 0, 0.18) },
+      { geometry: makeLoopGeo(-1), material: mat,
+        matrix: localMatrix(-w * 1.0, w * 0.15, w * 0.22, 0, 0, -0.18) },
+      { geometry: new THREE.SphereGeometry(w * 0.52, 16, 16), material: mat,
+        matrix: localMatrix(0, 0, w * 0.28, 0, 0, 0, 1.0, 0.82, 0.68) },
+      { geometry: makeTailGeo(1),  material: mat, matrix: localMatrix() },
+      { geometry: makeTailGeo(-1), material: mat, matrix: localMatrix() },
+    ];
+    const merged = AH.mergeParts(parts);
+
+    const placements = [];
     for (let i = 0; i < count; i++) {
       const a  = (i + 0.5) / count * Math.PI * 2;
-      const bx = Math.cos(a) * R, bz = Math.sin(a) * R, by = topY;
-
-      const g = new THREE.Group();
-      g.position.set(bx, by, bz);
-      g.lookAt(bx * 2, by, bz * 2);
-      const w = R * 0.06;
-
-      const makeLoop = (side) => {
-        const sh = new THREE.Shape();
-        sh.moveTo(0, 0);
-        sh.bezierCurveTo( side * w * 0.25,  w * 3.4, side * w * 2.2,  w * 3.4, side * w * 1.9, 0);
-        sh.bezierCurveTo( side * w * 2.2, -w * 0.9, side * w * 0.25, -w * 0.9, 0, 0);
-        const geo = new THREE.ExtrudeGeometry(sh, {
-          depth: w * 0.45, bevelEnabled: true,
-          bevelSize: w * 0.07, bevelThickness: w * 0.07, curveSegments: 20,
-        });
-        geo.center();
-        const m = new THREE.Mesh(geo, mat);
-        m.position.set(side * w * 1.0, w * 0.15, w * 0.22);
-        m.rotation.z = side * 0.18;
-        m.castShadow = true;
-        return m;
-      };
-      g.add(makeLoop(1));
-      g.add(makeLoop(-1));
-
-      const knot = new THREE.Mesh(new THREE.SphereGeometry(w * 0.52, 16, 16), mat);
-      knot.scale.set(1.0, 0.82, 0.68);
-      knot.position.set(0, 0, w * 0.28);
-      knot.castShadow = true;
-      g.add(knot);
-
-      const makeTail = (side) => {
-        const pts = [];
-        for (let t = 0; t <= 14; t++) {
-          const u = t / 14;
-          pts.push(new THREE.Vector3(
-            side * (w * 0.3 + u * w * 0.38),
-            -u * H * 0.48,
-            w * 0.18 - u * w * 0.1,
-          ));
-        }
-        const m = new THREE.Mesh(
-          new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 18, w * 0.21, 8, false),
-          mat,
-        );
-        m.castShadow = true;
-        return m;
-      };
-      g.add(makeTail(1));
-      g.add(makeTail(-1));
-
-      group.add(g);
+      const bx = Math.cos(a) * R, bz = Math.sin(a) * R;
+      // Reproduce the original g.lookAt(bx*2, topY, bz*2) orientation: the
+      // bow faces directly outward, i.e. rotated by the same angle `a`.
+      placements.push(worldMatrix(bx, topY, bz, -a - Math.PI / 2));
     }
+    AH.placeInstances(group, merged, placements, true);
   }
 
   root.CD = root.CD || {};
